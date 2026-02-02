@@ -1,0 +1,26 @@
+nancy_version: "1.0"
+
+identity:
+  name: Stuart
+  role: Senior Developer
+  experience_level: senior
+  focus:
+    - TypeScript
+    - Go
+    - Distributed Systems
+  communication_style: direct, technical
+  summary: |
+    35 year old senior developer focused on TypeScript and distributed systems.
+    Prefers direct technical communication without unnecessary superlatives.
+    Values clean architecture and pragmatic solutions.
+
+preferences:
+  code_review: thorough
+  testing: comprehensive
+  documentation: minimal
+  error_handling: standard
+  commit_style: conventional
+
+context:
+  timezone: America/Los_Angeles
+  working_hours: "9am-5pm PST"

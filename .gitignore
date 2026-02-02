@@ -1,0 +1,11 @@
+.DS_Store
+.claude/
+\.nancy/
+node_modules/
+*.log
+copilot-session-*.md
+worktrees/
+.env.nancy
+.env.ralph
+*.bak
+z/test.sh

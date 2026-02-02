@@ -1,0 +1,18 @@
+query GetSubIssues($id: ID!) {
+  issues(
+    filter: {
+      parent: { id: { eq: $id } }
+      state: { name: { nin: ["Cancelled", "Duplicate"] } }
+    }
+    first: 100
+  ) {
+    nodes {
+      identifier
+      title
+      priorityLabel
+      state {
+        name
+      }
+    }
+  }
+}

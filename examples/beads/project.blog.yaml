@@ -1,0 +1,98 @@
+nancy_version: "1.0"
+
+name: blog
+summary: |
+  Technical blog and content platform for sharing insights on AI automation,
+  developer productivity, and product updates. Built with modern static site
+  generation for performance and SEO.
+
+type: website
+
+tech_stack:
+  languages:
+    - TypeScript
+    - Markdown
+    - MDX
+  frameworks:
+    - Next.js (App Router)
+    - React
+  styling:
+    - Tailwind CSS
+  tools:
+    - Contentlayer (content processing)
+    - Vercel (deployment)
+    - Plausible Analytics (privacy-friendly)
+
+purpose: Content publishing and SEO-optimized technical writing
+
+patterns:
+  - Static generation for all blog posts (ISR for updates)
+  - MDX for rich interactive content
+  - Automatic sitemap and RSS feed generation
+  - Image optimization with next/image
+  - Semantic HTML for accessibility and SEO
+
+constraints:
+  - Core Web Vitals must be green
+  - Lighthouse score > 95 for all categories
+  - First Contentful Paint < 1.5s
+  - Zero layout shift (CLS = 0)
+  - Mobile-first responsive design
+
+content_structure:
+  posts:
+    location: content/posts/
+    format: MDX
+    frontmatter:
+      - title (required)
+      - date (required)
+      - summary (required, 150-160 chars for meta description)
+      - author (required)
+      - tags (array)
+      - featured_image (optional)
+      - draft (boolean)
+  authors:
+    location: content/authors/
+    format: YAML
+    fields:
+      - name
+      - role
+      - bio
+      - avatar
+      - social_links
+
+features:
+  - Syntax highlighting for code blocks (Shiki)
+  - Table of contents auto-generation
+  - Reading time estimation
+  - Related posts suggestions
+  - Newsletter signup integration
+  - Social share buttons
+  - Comment system (optional, privacy-focused)
+  - Dark mode support
+  - RSS feed
+  - Sitemap generation
+
+seo_requirements:
+  - Structured data (Article, BreadcrumbList, Organization)
+  - Open Graph tags
+  - Twitter Card tags
+  - Canonical URLs
+  - Dynamic meta descriptions from post summaries
+  - Alt text for all images
+  - Descriptive heading hierarchy
+
+active_work:
+  current_focus: |
+    Implementing MDX components for interactive code examples and
+    setting up content pipeline for weekly publishing schedule
+  next_milestones:
+    - Launch MVP with 5 seed posts
+    - Implement newsletter integration
+    - Add syntax highlighting themes
+    - Set up analytics and tracking
+
+links:
+  repository: https://github.com/username/nancy-blog
+  production: https://blog.nancy.dev
+  staging: https://staging-blog.nancy.dev

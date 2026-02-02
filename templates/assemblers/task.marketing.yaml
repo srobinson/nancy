@@ -1,0 +1,97 @@
+name: Marketing Task
+description: Assemble context for marketing and content creation tasks
+trigger: nancy init --type marketing
+version: "1.0"
+
+# Detection logic
+detect:
+  content_type:
+    from:
+      - .marketing.yaml
+      - package.json.marketing
+  platform:
+    from:
+      - .marketing.yaml.platforms
+
+# Fragment selection
+# Marketing tasks use a simplified domain structure focused on brand voice
+# and content guidelines rather than technical specifications
+fragments:
+  # Core Nancy principles and user identity
+  always:
+    - core.principles
+    - user.identity
+
+  # Conditionally include based on content type
+  conditional:
+    # Brand voice is essential for all marketing content
+    - if: beads.marketing.brand exists
+      include: marketing.brand.voice
+
+    # Content type specific guidelines
+    - if: detected.content_type == "blog"
+      include: marketing.content.blog
+
+    - if: detected.content_type == "social"
+      include: marketing.content.social
+
+    - if: detected.content_type == "email"
+      include: marketing.content.email
+
+    - if: detected.content_type == "landing-page"
+      include: marketing.content.landing-page
+
+    - if: detected.content_type == "product-copy"
+      include: marketing.content.product-copy
+
+    # Platform-specific guidelines
+    - if: detected.platform contains "twitter"
+      include: marketing.platform.twitter
+
+    - if: detected.platform contains "linkedin"
+      include: marketing.platform.linkedin
+
+    - if: detected.platform contains "instagram"
+      include: marketing.platform.instagram
+
+    # SEO considerations for web content
+    - if: detected.content_type in ["blog", "landing-page"]
+      include: marketing.seo.best-practices
+
+    # Campaign context if available
+    - if: beads.marketing.campaigns.{campaign} exists
+      include: marketing.campaign.context
+
+# Variable sources for interpolation
+interpolation:
+  user: beads.user
+  brand: beads.marketing.brand
+  campaign: beads.marketing.campaigns.{campaign}
+  detected: detected.*
+  beads: beads.*
+
+# Fragment ordering (priority-based)
+# For marketing tasks, brand voice comes early to set the tone
+order:
+  - "core.* (priority: 0-9)"
+  - "user.* (priority: 10-19)"
+  - "marketing.brand.* (priority: 20-29)"
+  - "marketing.campaign.* (priority: 30-39)"
+  - "marketing.content.* (priority: 40-49)"
+  - "marketing.platform.* (priority: 50-59)"
+  - "marketing.seo.* (priority: 60-69)"
+  - "tasks.* (priority: 80-89)"
+
+# Output configuration
+output:
+  format: markdown
+  sections:
+    - "# Nancy Marketing Task"
+    - "---"
+    - "## Brand Voice & Identity"
+    - "## Content Guidelines"
+    - "## Platform Requirements"
+    - "## SEO Considerations"
+    - "## Campaign Context"
+  cache: true
+  cache_key: "hash(beads + fragments + detected)"

@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/bead.style.v1.json",
+  "title": "Nancy Code Style Bead",
+  "description": "Language or framework specific code style preferences",
+  "type": "object",
+  "required": ["nancy_version", "language"],
+  "properties": {
+    "nancy_version": {
+      "type": "string",
+      "description": "Schema version for migration support",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "domain": {
+      "type": "string",
+      "description": "Domain this style applies to (optional, defaults to 'core')",
+      "enum": ["core", "user", "eng", "marketing", "legal", "creative", "research", "ops", "finance", "hr"],
+      "examples": ["core", "eng"]
+    },
+    "language": {
+      "type": "string",
+      "description": "Programming language this style applies to",
+      "examples": ["typescript", "go", "python", "rust"]
+    },
+    "mode": {
+      "type": "string",
+      "description": "Mode or context for this style",
+      "enum": ["production", "poc", "prototype", "learning"],
+      "examples": ["production"]
+    },
+    "naming": {
+      "type": "object",
+      "description": "Naming conventions",
+      "properties": {
+        "variables": {
+          "type": "string",
+          "enum": ["camelCase", "snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"],
+          "examples": ["camelCase"]
+        },
+        "functions": {
+          "type": "string",
+          "enum": ["camelCase", "snake_case", "PascalCase"],
+          "examples": ["camelCase"]
+        },
+        "classes": {
+          "type": "string",
+          "enum": ["PascalCase", "snake_case"],
+          "examples": ["PascalCase"]
+        },
+        "constants": {
+          "type": "string",
+          "enum": ["SCREAMING_SNAKE_CASE", "camelCase", "PascalCase"],
+          "examples": ["SCREAMING_SNAKE_CASE"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "formatting": {
+      "type": "object",
+      "description": "Code formatting preferences",
+      "properties": {
+        "quotes": {
+          "type": "string",
+          "enum": ["single", "double", "backtick"],
+          "examples": ["single"]
+        },
+        "semicolons": {
+          "type": "boolean",
+          "description": "Use semicolons (JS/TS)",
+          "examples": [false]
+        },
+        "indent_size": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8,
+          "examples": [2]
+        },
+        "indent_style": {
+          "type": "string",
+          "enum": ["spaces", "tabs"],
+          "examples": ["spaces"]
+        },
+        "line_length": {
+          "type": "integer",
+          "minimum": 80,
+          "maximum": 200,
+          "examples": [100]
+        },
+        "trailing_commas": {
+          "type": "string",
+          "enum": ["none", "es5", "all"],
+          "description": "Trailing comma preference",
+          "examples": ["all"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "type_system": {
+      "type": "object",
+      "description": "Type system preferences (for TypeScript, etc.)",
+      "properties": {
+        "strictness": {
+          "type": "string",
+          "enum": ["strict", "moderate", "loose"],
+          "examples": ["strict"]
+        },
+        "explicit_types": {
+          "type": "string",
+          "enum": ["always", "when_needed", "minimal"],
+          "description": "When to use explicit type annotations",
+          "examples": ["when_needed"]
+        },
+        "any_allowed": {
+          "type": "boolean",
+          "description": "Allow 'any' type",
+          "examples": [false]
+        },
+        "null_handling": {
+          "type": "string",
+          "enum": ["strict", "standard", "permissive"],
+          "examples": ["strict"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "error_handling": {
+      "type": "object",
+      "description": "Error handling preferences",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["exceptions", "result_types", "both"],
+          "examples": ["exceptions"]
+        },
+        "validation": {
+          "type": "string",
+          "enum": ["runtime", "compile_time", "both"],
+          "examples": ["both"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "testing": {
+      "type": "object",
+      "description": "Testing preferences",
+      "properties": {
+        "framework": {
+          "type": "string",
+          "description": "Preferred testing framework",
+          "examples": ["jest", "vitest", "pytest", "go test"]
+        },
+        "coverage_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum test coverage percentage",
+          "examples": [80]
+        },
+        "style": {
+          "type": "string",
+          "enum": ["unit_focused", "integration_focused", "e2e_focused", "balanced"],
+          "examples": ["balanced"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "documentation": {
+      "type": "object",
+      "description": "Documentation preferences",
+      "properties": {
+        "public_apis": {
+          "type": "string",
+          "enum": ["required", "encouraged", "minimal"],
+          "examples": ["required"]
+        },
+        "internal_code": {
+          "type": "string",
+          "enum": ["required", "when_complex", "minimal"],
+          "examples": ["when_complex"]
+        },
+        "style": {
+          "type": "string",
+          "description": "Documentation style",
+          "examples": ["JSDoc", "TSDoc", "Docstrings", "Godoc"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "imports": {
+      "type": "object",
+      "description": "Import/module preferences",
+      "properties": {
+        "organization": {
+          "type": "string",
+          "enum": ["grouped", "alphabetical", "by_type"],
+          "examples": ["grouped"]
+        },
+        "style": {
+          "type": "string",
+          "description": "Import style preference",
+          "examples": ["named imports preferred", "namespace imports for large libs"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "preferences": {
+      "type": "string",
+      "description": "Free-form additional preferences or guidelines",
+      "examples": ["Prefer functional style over classes. Avoid early abstraction."]
+    }
+  },
+  "additionalProperties": true
+}

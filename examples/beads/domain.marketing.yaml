@@ -1,0 +1,109 @@
+nancy_version: "1.0"
+
+domain: marketing
+summary: |
+  Marketing domain configuration for brand voice, content strategy,
+  and audience engagement across digital channels.
+
+brand_voice:
+  tone: friendly, authentic, empowering
+  personality:
+    - Approachable but professional
+    - Data-informed but human-centered
+    - Solution-focused without hype
+  avoid:
+    - Jargon and buzzwords
+    - Superlatives without backing
+    - Passive voice
+    - Corporate speak
+
+audience:
+  primary:
+    - Product managers seeking AI workflow tools
+    - Engineering leaders exploring automation
+    - Technical founders building AI products
+  characteristics:
+    - Technical but not necessarily hands-on developers
+    - Value efficiency and measurable outcomes
+    - Skeptical of marketing hype
+    - Prefer concrete examples over abstract promises
+
+content_preferences:
+  formats:
+    - Technical blog posts (800-1500 words)
+    - Product update announcements (300-500 words)
+    - Case studies with metrics (1000-2000 words)
+    - Social media snippets (100-280 characters)
+  structure:
+    - Lead with the problem or insight
+    - Provide concrete examples early
+    - Support claims with data or examples
+    - End with clear next steps
+
+seo_strategy:
+  focus_keywords:
+    - AI task automation
+    - autonomous agents
+    - developer productivity tools
+    - AI workflow orchestration
+  content_pillars:
+    - Product capabilities and use cases
+    - Technical thought leadership
+    - Customer success stories
+    - Industry trends and analysis
+  optimization:
+    - Target long-tail technical queries
+    - Focus on practical how-to content
+    - Build topical authority in AI automation
+    - Prioritize quality over keyword density
+
+messaging:
+  value_propositions:
+    - "Autonomous task execution that actually works"
+    - "AI agents that understand your workflow context"
+    - "From task to completion without handholding"
+  taglines:
+    primary: "Intelligent task execution for development teams"
+    alternative: "The AI agent that ships"
+
+social_media:
+  platforms:
+    twitter:
+      voice: technical, concise, insightful
+      content_mix: "60% product updates, 30% industry insights, 10% community"
+      hashtag_strategy: minimal, relevant only
+    linkedin:
+      voice: professional, value-focused
+      content_mix: "40% thought leadership, 40% case studies, 20% product updates"
+      post_length: "800-1200 characters ideal"
+
+content_calendar:
+  frequency:
+    blog_posts: weekly
+    product_updates: as shipped
+    case_studies: monthly
+    social_posts: "3-5x per week"
+  themes:
+    - Productivity and automation
+    - AI agent architecture
+    - Developer workflows
+    - Integration patterns
+
+metrics:
+  primary:
+    - Organic traffic growth
+    - Content engagement (time on page, scroll depth)
+    - Conversion to product trial
+    - Share rate among technical audience
+  secondary:
+    - Domain authority growth
+    - Backlink quality
+    - Social media engagement
+    - Newsletter subscription rate
+
+compliance:
+  - No unsubstantiated performance claims
+  - Always cite data sources
+  - Respect user privacy in case studies
+  - Clear disclosure of AI-generated content
+  - Follow platform-specific advertising guidelines

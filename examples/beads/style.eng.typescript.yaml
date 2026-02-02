@@ -1,0 +1,50 @@
+nancy_version: "1.0"
+
+domain: eng
+language: typescript
+mode: production
+
+naming:
+  variables: camelCase
+  functions: camelCase
+  classes: PascalCase
+  constants: SCREAMING_SNAKE_CASE
+
+formatting:
+  quotes: single
+  semicolons: false
+  indent_size: 2
+  indent_style: spaces
+  line_length: 100
+  trailing_commas: all
+
+type_system:
+  strictness: strict
+  explicit_types: when_needed
+  any_allowed: false
+  null_handling: strict
+
+error_handling:
+  strategy: exceptions
+  validation: both
+
+testing:
+  framework: vitest
+  coverage_threshold: 80
+  style: balanced
+
+documentation:
+  public_apis: required
+  internal_code: when_complex
+  style: TSDoc
+
+imports:
+  organization: grouped
+  style: "named imports preferred, namespace imports for large libs"
+
+preferences: |
+  - Prefer functional style over classes
+  - Avoid early abstraction - wait for patterns to emerge
+  - Small, focused functions with descriptive names
+  - Immutability by default
+  - Use TypeScript's type system to make invalid states unrepresentable

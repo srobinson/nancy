@@ -1,0 +1,45 @@
+nancy_version: "1.0"
+
+name: nancy-bubble-gum
+summary: |
+  SQLite data layer for Nancy autonomous task execution framework.
+  Provides persistent storage for task state, Linear integration, and
+  context management for AI agents.
+
+type: library
+
+tech_stack:
+  languages:
+    - TypeScript
+    - JavaScript
+  frameworks:
+    - Node.js
+  databases:
+    - SQLite
+  tools:
+    - Git Worktrees
+    - Linear
+    - GitHub Actions
+
+purpose: Data persistence and query interface for Nancy's task execution system
+
+patterns:
+  - Functional programming style preferred
+  - Minimal abstractions - no premature optimization
+  - Convention over configuration
+  - Simple, readable code over clever solutions
+
+constraints:
+  - Must work offline (local-first)
+  - SQLite only - no external databases
+  - Fast queries (< 100ms for common operations)
+  - Git-friendly data format (JSONL export)
+
+active_work:
+  linear_issues:
+    - NBA-123
+  current_focus: Prompt factory system with composable fragments
+
+links:
+  repository: https://github.com/username/nancy-bubble-gum
+  linear_project: NBA

@@ -1,0 +1,48 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y jq uuid-runtime
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install jq
+          fi
+        shell: bash
+
+      - name: Make test runner executable
+        run: chmod +x tests/run.sh tests/unit/*.sh tests/integration/*.sh
+
+      - name: Run tests
+        run: ./tests/run.sh
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts
+        run: |
+          shellcheck -e SC1090,SC1091,SC2034,SC2154 nancy lib/*.sh commands/*.sh || true
+          echo "Note: Some warnings are expected due to dynamic sourcing"

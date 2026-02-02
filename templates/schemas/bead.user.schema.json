@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/bead.user.v1.json",
+  "title": "Nancy User Bead",
+  "description": "User identity and preferences for Nancy AI assistant",
+  "type": "object",
+  "required": ["nancy_version", "identity"],
+  "properties": {
+    "nancy_version": {
+      "type": "string",
+      "description": "Schema version for migration support",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "identity": {
+      "type": "object",
+      "description": "User identity information",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "User's name",
+          "minLength": 1,
+          "examples": ["Stuart", "Alex Chen"]
+        },
+        "role": {
+          "type": "string",
+          "description": "Professional role",
+          "examples": ["Senior Developer", "Tech Lead", "Full-Stack Engineer"]
+        },
+        "experience_level": {
+          "type": "string",
+          "description": "Experience level",
+          "enum": ["junior", "mid", "senior", "staff", "principal"],
+          "default": "mid"
+        },
+        "focus": {
+          "type": "array",
+          "description": "Areas of focus or expertise",
+          "items": {
+            "type": "string"
+          },
+          "examples": [["TypeScript", "React", "Node.js"]]
+        },
+        "communication_style": {
+          "type": "string",
+          "description": "Preferred communication style",
+          "examples": ["direct, technical", "detailed explanations", "concise summaries"]
+        },
+        "summary": {
+          "type": "string",
+          "description": "Brief summary about the user (used in prompts)",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "preferences": {
+      "type": "object",
+      "description": "User preferences for code and workflow",
+      "properties": {
+        "code_review": {
+          "type": "string",
+          "enum": ["minimal", "moderate", "thorough"],
+          "description": "Code review thoroughness preference"
+        },
+        "testing": {
+          "type": "string",
+          "enum": ["minimal", "standard", "comprehensive"],
+          "description": "Testing approach preference"
+        },
+        "documentation": {
+          "type": "string",
+          "enum": ["minimal", "standard", "extensive"],
+          "description": "Documentation preference"
+        },
+        "error_handling": {
+          "type": "string",
+          "enum": ["basic", "standard", "defensive"],
+          "description": "Error handling approach"
+        },
+        "commit_style": {
+          "type": "string",
+          "description": "Preferred commit message style",
+          "examples": ["conventional", "descriptive", "brief"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "type": "object",
+      "description": "Additional context about work environment",
+      "properties": {
+        "timezone": {
+          "type": "string",
+          "description": "User's timezone",
+          "examples": ["America/Los_Angeles", "Europe/London"]
+        },
+        "working_hours": {
+          "type": "string",
+          "description": "Typical working hours",
+          "examples": ["9am-5pm PST", "flexible"]
+        },
+        "company": {
+          "type": "string",
+          "description": "Company name (optional)"
+        },
+        "team": {
+          "type": "string",
+          "description": "Team name (optional)"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

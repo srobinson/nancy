@@ -1,0 +1,148 @@
+nancy_version: "1.0"
+
+domain: marketing
+category: brand
+mode: production
+
+writing_style:
+  voice: conversational yet authoritative
+  perspective: second_person
+  sentence_structure: varied, prefer shorter sentences for clarity
+  paragraph_length: "3-5 sentences ideal, max 7"
+
+tone_guidelines:
+  primary: helpful, confident, transparent
+  avoid: overly formal, salesy, apologetic
+  examples:
+    good:
+      - "Here's how it works"
+      - "You'll see results in three steps"
+      - "This solves the context handoff problem"
+    bad:
+      - "We're excited to announce"
+      - "Revolutionizing the way you work"
+      - "Please note that users may experience"
+
+formatting:
+  headings:
+    style: sentence_case
+    structure: "Use H2 for main sections, H3 for subsections, avoid H4+"
+  lists:
+    - Lead with action verbs for steps
+    - Use parallel structure
+    - Keep items concise (1-2 lines)
+  emphasis:
+    bold: key concepts, important warnings
+    italic: minimal use, only for technical terms or emphasis
+    code: technical terms, commands, file paths
+
+language_preferences:
+  person: second (you, your)
+  tense: present for features, past for case studies
+  active_voice: required (passive only when object is focus)
+  contractions: allowed and encouraged for natural tone
+
+technical_writing:
+  code_examples: always include context and expected output
+  jargon: define on first use or avoid
+  acronyms: spell out on first use in each article
+  screenshots: annotate with arrows or highlights
+
+structure_templates:
+  blog_post:
+    - Hook (problem or insight)
+    - Context (why it matters)
+    - Solution/Content (the meat)
+    - Example or Case Study
+    - Takeaways (3-5 bullets)
+    - Call to Action
+
+  product_update:
+    - What's New (headline feature)
+    - Why It Matters (user benefit)
+    - How to Use It (quick steps)
+    - What's Next (optional teaser)
+
+  case_study:
+    - Customer Background (1 paragraph)
+    - Challenge (specific problem)
+    - Solution (how product helped)
+    - Results (metrics and outcomes)
+    - Quote (customer voice)
+    - Lessons Learned
+
+call_to_action_style:
+  primary_ctas:
+    - "Try it free for 14 days"
+    - "See how it works"
+    - "Read the documentation"
+  secondary_ctas:
+    - "Learn more"
+    - "View the example"
+    - "Join the waitlist"
+  avoid:
+    - "Click here"
+    - "Submit"
+    - "Buy now"
+
+metrics_presentation:
+  - Lead with the outcome, then the metric
+  - Provide context (time period, sample size)
+  - Use concrete numbers over percentages when possible
+  - Visualize complex data
+  - Always cite sources or methodology
+
+brand_vocabulary:
+  preferred:
+    autonomous: "autonomous (not automated)"
+    context-aware: "context-aware (not smart/intelligent)"
+    task execution: "task execution (not workflow automation)"
+    agent: "agent (not bot/assistant)"
+
+  capitalization:
+    - Nancy (product name, always capitalized)
+    - Linear, GitHub (proper nouns as trademarked)
+    - TypeScript, JavaScript (proper technical names)
+
+accessibility:
+  - Alt text required for all images
+  - Descriptive link text (no "click here")
+  - Heading hierarchy must be logical
+  - Color cannot be sole indicator
+  - Minimum contrast ratio 4.5:1
+
+visual_guidelines:
+  images:
+    - Screenshots should show real product, not mockups
+    - Diagrams should be simple and focused
+    - Include captions for context
+    - Use consistent annotation style
+
+  code_blocks:
+    - Include language identifier for syntax highlighting
+    - Show input and output when relevant
+    - Keep examples runnable and realistic
+    - Comment complex logic
+    - Use syntax: language (e.g., ```typescript)
+
+social_media_adaptations:
+  twitter:
+    - Front-load the hook (first 100 chars)
+    - Use line breaks for readability
+    - One emoji max, only when it adds meaning
+    - Thread for complex topics (4-6 tweets ideal)
+
+  linkedin:
+    - Professional but not corporate
+    - Longer-form acceptable (800-1200 chars)
+    - Include relevant hashtags (3-5 max)
+    - Tag people/companies when appropriate
+
+editing_checklist:
+  - Remove unnecessary qualifiers (very, really, quite)
+  - Cut passive voice
+  - Verify all links work
+  - Check spelling of technical terms
+  - Ensure consistent brand terminology
+  - Run through readability checker (aim for grade 8-10)
+  - Verify mobile formatting

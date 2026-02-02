@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/bead.domain.v1.json",
+  "title": "Nancy Domain Configuration Bead",
+  "description": "Domain-specific configuration for specialized workflows and contexts",
+  "type": "object",
+  "required": ["nancy_version", "domain"],
+  "properties": {
+    "nancy_version": {
+      "type": "string",
+      "description": "Schema version for migration support",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "domain": {
+      "type": "string",
+      "description": "The domain this configuration applies to",
+      "enum": [
+        "engineering",
+        "marketing",
+        "legal",
+        "creative",
+        "research",
+        "ops",
+        "finance",
+        "hr"
+      ],
+      "examples": ["marketing", "legal", "engineering"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this domain configuration",
+      "examples": [
+        "Marketing domain configuration for brand voice and content guidelines",
+        "Legal domain configuration for compliance and documentation standards"
+      ]
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "nancy_version": "1.0",
+      "domain": "marketing",
+      "description": "Marketing domain configuration for brand voice and content",
+      "brand_voice": {
+        "tone": ["friendly", "professional", "approachable"],
+        "avoid": ["jargon", "overly technical language", "buzzwords"],
+        "personality": "Helpful expert who speaks plainly"
+      },
+      "content_guidelines": {
+        "max_sentence_length": 25,
+        "reading_level": "8th grade",
+        "formatting": {
+          "use_bullet_points": true,
+          "use_headers": true,
+          "max_paragraph_length": 4
+        }
+      },
+      "seo": {
+        "keyword_density": "1-2%",
+        "meta_description_length": 160,
+        "title_length": 60
+      },
+      "channels": ["blog", "social", "email", "ads"],
+      "approval_workflow": {
+        "required_reviewers": ["marketing_lead", "brand_manager"],
+        "legal_review_required": true
+      }
+    },
+    {
+      "nancy_version": "1.0",
+      "domain": "legal",
+      "description": "Legal domain configuration for compliance and documentation",
+      "compliance_frameworks": ["GDPR", "CCPA", "SOC2", "HIPAA"],
+      "document_standards": {
+        "version_control": "required",
+        "retention_period": "7 years",
+        "signature_required": true,
+        "audit_trail": true
+      },
+      "review_requirements": {
+        "peer_review": true,
+        "senior_counsel_review": {
+          "threshold": "high_risk"
+        },
+        "external_counsel": {
+          "threshold": "litigation"
+        }
+      },
+      "templates": {
+        "contract": "templates/legal/contract.md",
+        "nda": "templates/legal/nda.md",
+        "privacy_policy": "templates/legal/privacy-policy.md",
+        "terms_of_service": "templates/legal/tos.md"
+      },
+      "language_preferences": {
+        "precision": "absolute",
+        "ambiguity_tolerance": "none",
+        "defined_terms": "capitalize_and_quote",
+        "cross_references": "section_numbers_required"
+      },
+      "risk_assessment": {
+        "categories": ["low", "medium", "high", "critical"],
+        "escalation_matrix": {
+          "low": "paralegal",
+          "medium": "associate",
+          "high": "senior_counsel",
+          "critical": "general_counsel"
+        }
+      }
+    }
+  ]
+}

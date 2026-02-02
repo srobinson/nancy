@@ -1,0 +1,8 @@
+query GetWorkflowStates {
+  workflowStates {
+    nodes {
+      id
+      name
+    }
+  }
+}

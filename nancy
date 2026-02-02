@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# b_path:: src/nancy
+# shellcheck disable=SC2155
+# ------------------------------------------------------------------------------
+
+set -euo pipefail
+
+# ------------------------------------------------------------------------------
+
+export NANCY_VERSION="2.0.0"
+export NANCY_DIR_NAME=".nancy"
+
+# Resolve symlinks to get actual framework location
+_nancy_script="${BASH_SOURCE[0]}"
+while [[ -L "$_nancy_script" ]]; do
+	_nancy_script=$(readlink "$_nancy_script")
+done
+export NANCY_FRAMEWORK_ROOT="$(cd "$(dirname "$_nancy_script")" && pwd)"
+export NANCY_PROJECT_ROOT="$(pwd)"
+export NANCY_DIR="$NANCY_PROJECT_ROOT/$NANCY_DIR_NAME"
+export NANCY_TASK_DIR="$NANCY_DIR/tasks"
+export NANCY_CONFIG_FILE="$NANCY_DIR/config.json"
+export NANCY_DEBUG=1
+export NANCY_EXECUTION_MODE="loop"
+export NANCY_CLI
+export NANCY_CURRENT_TASK_DIR
+
+# ------------------------------------------------------------------------------
+
+export NANCY_CODE_REVIEW_AGENT_ENABLED=true
+
+# ------------------------------------------------------------------------------
+
+# export CLAUDE_CODE_SUBAGENT_MODEL="opus"
+
+# ------------------------------------------------------------------------------
+
+. "$NANCY_FRAMEWORK_ROOT/src/lib/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/core/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/gql/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/config/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cli/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/task/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/comms/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/notify/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/linear/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/nav/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cmd/index.sh"
+
+# ------------------------------------------------------------------------------
+
+# Bootstrap: load config once, early, for all commands.
+# This keeps CLI selection authoritative and avoids having to guard every call site.
+if [[ -f "$NANCY_CONFIG_FILE" ]]; then
+	config::load
+fi
+
+main() {
+	case "${1:-}" in
+	setup) cmd::setup "${@:2}" ;;
+	init) cmd::init "${@:2}" ;;
+	start) cmd::start "${@:2}" ;;
+	status) cmd::status "${@:2}" ;;
+	doctor) cmd::doctor "${@:2}" ;;
+	go) cmd::go "${@:2}" ;;
+	orchestrate) cmd::orchestrate "${@:2}" ;;
+	direct) cmd::direct "${@:2}" ;;
+	pause) cmd::pause "${@:2}" ;;
+	unpause) cmd::unpause "${@:2}" ;;
+	msg) cmd::msg "${@:2}" ;;
+	inbox) cmd::inbox "${@:2}" ;;
+	messages) cmd::messages "${@:2}" ;;
+	read) cmd::read_msg "${@:2}" ;;
+	archive) cmd::archive "${@:2}" ;;
+	notify-test) cmd::notify_test "${@:2}" ;;
+	# Internal commands (used by orchestration panes)
+	_worker) cmd::_worker "${@:2}" ;;
+	_orchestrator) cmd::_orchestrator "${@:2}" ;;
+	_logs) cmd::_logs "${@:2}" ;;
+	_sidebar) cmd::_sidebar "${@:2}" ;;
+	_nav) nav::show_menu "${@:2}" ;;
+	help | --help | -h) cmd::help ;;
+	version | --version | -v) cmd::version ;;
+	stu) token::reset "ALP-263" ;;
+	*) cmd::menu ;;
+	esac
+}
+
+main "$@"

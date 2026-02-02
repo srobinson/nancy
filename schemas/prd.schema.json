@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nancy.dev/schemas/prd.schema.json",
+  "title": "Nancy PRD Schema",
+  "description": "Product Requirements Document schema for Nancy task specifications",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version",
+      "const": "1.0"
+    },
+    "task": {
+      "type": "string",
+      "description": "Task identifier matching directory name",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable task title",
+      "maxLength": 200
+    },
+    "goal": {
+      "type": "string",
+      "description": "High-level objective (the 'why')"
+    },
+    "context": {
+      "type": "object",
+      "description": "Background information gathered during elicitation",
+      "properties": {
+        "codebase_analysis": {
+          "type": "string",
+          "description": "Summary of relevant codebase context"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Conditions expected to be true"
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Limitations on implementation"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "External dependencies required"
+        },
+        "out_of_scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicitly excluded items"
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "description": "List of features to implement",
+      "items": {
+        "$ref": "#/$defs/feature"
+      }
+    },
+    "success_criteria": {
+      "type": "array",
+      "description": "Overall task success criteria",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^SC-[0-9]{3}$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "string",
+            "description": "How to verify this criterion is met"
+          },
+          "met": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": ["id", "description", "verification"]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "Who created this PRD (human, agent, or collaboration)"
+        },
+        "revision": {
+          "type": "integer",
+          "default": 1,
+          "description": "Revision number, incremented on each update"
+        },
+        "changelog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "revision": { "type": "integer" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "author": { "type": "string" },
+              "summary": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "description": "A single feature to implement",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^F-[0-9]{3}$",
+          "description": "Feature ID (e.g., F-001)"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the feature"
+        },
+        "user_story": {
+          "type": "string",
+          "description": "As a [role], I want [action], so that [benefit]"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["must-have", "should-have", "could-have", "wont-have"],
+          "description": "MoSCoW priority"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["planned", "in-progress", "blocked", "done", "cut"],
+          "default": "planned"
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/acceptance_criterion"
+          },
+          "minItems": 1
+        },
+        "technical_notes": {
+          "type": "string",
+          "description": "Implementation guidance and notes"
+        },
+        "affected_files": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Files likely to be created or modified"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^F-[0-9]{3}$"
+          },
+          "description": "Feature IDs this depends on"
+        },
+        "estimated_effort": {
+          "type": "string",
+          "enum": ["trivial", "small", "medium", "large", "epic"],
+          "description": "Rough effort estimate"
+        }
+      },
+      "required": ["id", "title", "acceptance_criteria"]
+    },
+    "acceptance_criterion": {
+      "type": "object",
+      "description": "Gherkin-style acceptance criterion",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AC-[0-9]{3}$"
+        },
+        "given": {
+          "type": "string",
+          "description": "Precondition/context"
+        },
+        "when": {
+          "type": "string",
+          "description": "Action/trigger"
+        },
+        "then": {
+          "type": "string",
+          "description": "Expected outcome"
+        },
+        "and": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional outcomes"
+        },
+        "met": {
+          "type": "boolean",
+          "default": false
+        },
+        "notes": {
+          "type": "string",
+          "description": "Implementation notes or issues"
+        }
+      },
+      "required": ["id", "given", "when", "then"]
+    }
+  },
+  "required": ["version", "task", "goal", "features"]
+}

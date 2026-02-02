@@ -1,0 +1,41 @@
+query GetNextTodoIssue($projectName: String!, $stateName: String!) {
+  issues(
+    filter: {
+      project: { name: { eq: $projectName } }
+      state: { name: { eq: $stateName } }
+      assignee: { null: false }
+    }
+    first: 1
+    orderBy: createdAt
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      description
+      priority
+      priorityLabel
+      url
+      state {
+        id
+        name
+        type
+      }
+      assignee {
+        id
+        name
+        email
+      }
+      project {
+        id
+        name
+      }
+      parent {
+        id
+        identifier
+        title
+        description
+      }
+    }
+  }
+}

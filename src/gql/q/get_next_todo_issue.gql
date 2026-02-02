@@ -1,0 +1,28 @@
+query GetNextTodoIssue($projectName: String!, $stateName: String!) {
+  issues(
+    filter: {
+      project: { name: { eq: $projectName } }
+      state: { name: { eq: $stateName } }
+    }
+    first: 1
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      description
+      priority
+      priorityLabel
+      url
+      state {
+        id
+        name
+        type
+      }
+      project {
+        id
+        name
+      }
+    }
+  }
+}

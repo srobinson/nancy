@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/fragment.v1.json",
+  "title": "Nancy Fragment Frontmatter",
+  "description": "Metadata for markdown fragments used in prompt composition",
+  "type": "object",
+  "required": ["id", "domain", "category", "name"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique fragment identifier in format {domain}.{category}.{name}",
+      "pattern": "^(core|user|eng|marketing|legal|creative|research|ops|finance|hr)\\.[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$",
+      "examples": ["core.lang.typescript", "user.identity.profile", "eng.workflow.linear", "marketing.brand.voice", "legal.compliance.gdpr"]
+    },
+    "domain": {
+      "type": "string",
+      "description": "Domain this fragment belongs to",
+      "enum": ["core", "user", "eng", "marketing", "legal", "creative", "research", "ops", "finance", "hr"],
+      "examples": ["core", "user", "eng", "marketing", "legal"]
+    },
+    "category": {
+      "type": "string",
+      "description": "Category within the domain",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "examples": ["lang", "identity", "workflow", "brand", "compliance"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Specific name of the fragment",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "examples": ["typescript", "profile", "linear", "voice", "gdpr"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the fragment",
+      "examples": ["TypeScript coding guidelines"]
+    },
+    "requires": {
+      "type": "array",
+      "description": "Required beads or context",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["beads: styles.typescript", "detected: language"]]
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Conditions for including this fragment",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["detected.language == 'typescript'"]]
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Other fragments this depends on (for ordering)",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["meta.principles"]]
+    },
+    "priority": {
+      "type": "integer",
+      "description": "Assembly priority (0-100, lower = earlier)",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 50,
+      "examples": [10]
+    },
+    "section": {
+      "type": "string",
+      "description": "Which section this fragment belongs to",
+      "enum": [
+        "role_and_context",
+        "project_summary",
+        "coding_guidelines",
+        "workflow",
+        "principles",
+        "task_guidance"
+      ],
+      "examples": ["coding_guidelines"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Fragment version for compatibility tracking",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for discovery and filtering",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["language", "typescript", "frontend"]]
+    }
+  },
+  "additionalProperties": false
+}

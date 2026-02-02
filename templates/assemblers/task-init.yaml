@@ -1,0 +1,103 @@
+name: Task Initialization
+description: Assemble context for starting a new task
+trigger: nancy init <project>
+version: "1.0"
+
+# Detection logic
+detect:
+  project:
+    from: git_root
+  language:
+    from:
+      - package.json
+      - go.mod
+      - Cargo.toml
+      - pyproject.toml
+  framework:
+    from:
+      - package.json.dependencies
+      - package.json.devDependencies
+
+# Fragment selection
+# Fragments use dot notation organized by domain:
+# - core.*         : Core Nancy principles and configuration
+# - user.*         : User identity and preferences
+# - project.*      : Project-specific context
+# - eng.lang.*     : Programming language guidelines
+# - eng.framework.* : Framework-specific patterns
+# - eng.workflow.* : Development workflow tooling
+# - tasks.*        : Task-specific instructions
+fragments:
+  # Always include these
+  always:
+    - core.principles
+    - eng.workflow.linear
+
+  # Conditionally include based on context
+  conditional:
+    # User context
+    - if: beads.user exists
+      include: user.identity
+
+    # Project context
+    - if: beads.projects.{project} exists
+      include: project.summary
+
+    # Language-specific
+    - if: detected.language == "typescript"
+      include: eng.lang.typescript
+
+    - if: detected.language == "go"
+      include: eng.lang.go
+
+    - if: detected.language == "python"
+      include: eng.lang.python
+
+    - if: detected.language == "rust"
+      include: eng.lang.rust
+
+    # Framework-specific
+    - if: detected.framework contains "react"
+      include: eng.framework.react
+
+    - if: detected.framework contains "next"
+      include: eng.framework.nextjs
+
+    - if: detected.framework contains "svelte"
+      include: eng.framework.svelte
+
+    # Workflow-specific
+    - if: git.worktrees detected
+      include: eng.workflow.git-worktree
+
+# Variable sources for interpolation
+interpolation:
+  user: beads.user
+  project: beads.projects.{project}
+  detected: detected.*
+  git: git.*
+  beads: beads.*
+
+# Fragment ordering (priority-based)
+# Domain-based grouping ensures logical context assembly
+order:
+  - "core.* (priority: 0-9)"
+  - "user.* (priority: 10-19)"
+  - "project.* (priority: 20-29)"
+  - "eng.lang.* (priority: 50-59)"
+  - "eng.framework.* (priority: 60-69)"
+  - "eng.workflow.* (priority: 70-79)"
+  - "tasks.* (priority: 80-89)"
+
+# Output configuration
+output:
+  format: markdown
+  sections:
+    - "# Nancy Task Initialization"
+    - "---"
+    - "## Role & Context"
+    - "## Coding Guidelines"
+    - "## Workflow"
+    - "## Core Principles"
+  cache: true
+  cache_key: "hash(beads + fragments + detected)"

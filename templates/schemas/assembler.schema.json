@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/assembler.v1.json",
+  "title": "Nancy Assembler Configuration",
+  "description": "Rules for composing fragments into complete prompts",
+  "type": "object",
+  "required": ["name", "fragments", "output"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Assembler name",
+      "minLength": 1,
+      "examples": ["Task Initialization", "Quick Fix"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this assembler does",
+      "examples": ["Assemble context for starting a new task"]
+    },
+    "trigger": {
+      "type": "string",
+      "description": "Command or event that triggers this assembler",
+      "examples": ["nancy init <project>", "nancy fix"]
+    },
+    "detect": {
+      "type": "object",
+      "description": "Detection logic for context",
+      "properties": {
+        "project": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ]
+            }
+          }
+        },
+        "language": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "array",
+              "items": { "type": "string" },
+              "examples": [["package.json", "go.mod", "Cargo.toml"]]
+            }
+          }
+        },
+        "framework": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "fragments": {
+      "type": "object",
+      "description": "Fragment selection rules",
+      "required": ["always"],
+      "properties": {
+        "always": {
+          "type": "array",
+          "description": "Fragments to always include",
+          "items": { "type": "string" },
+          "examples": [["meta/principles", "workflows/linear"]]
+        },
+        "conditional": {
+          "type": "array",
+          "description": "Conditionally included fragments",
+          "items": {
+            "type": "object",
+            "required": ["if", "include"],
+            "properties": {
+              "if": {
+                "type": "string",
+                "description": "Condition expression",
+                "examples": ["detected.language == 'typescript'"]
+              },
+              "include": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "array", "items": { "type": "string" } }
+                ],
+                "description": "Fragment(s) to include if condition is true"
+              }
+            }
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Fragments to explicitly exclude",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "interpolation": {
+      "type": "object",
+      "description": "Variable sources for interpolation",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "type": "string"
+        }
+      },
+      "examples": [
+        {
+          "user": "beads.user",
+          "project": "beads.projects.{project}",
+          "detected": "detected.*"
+        }
+      ]
+    },
+    "order": {
+      "type": "array",
+      "description": "Fragment ordering rules (glob patterns with priority ranges)",
+      "items": { "type": "string" },
+      "examples": [["meta/* (priority: 0-9)", "user/* (priority: 10-19)"]]
+    },
+    "output": {
+      "type": "object",
+      "description": "Output configuration",
+      "required": ["format"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["markdown", "json", "yaml"],
+          "default": "markdown"
+        },
+        "sections": {
+          "type": "array",
+          "description": "Section headers in output",
+          "items": { "type": "string" },
+          "examples": [["# Role & Context", "# Project Summary"]]
+        },
+        "cache": {
+          "type": "boolean",
+          "description": "Whether to cache assembled output",
+          "default": true
+        },
+        "cache_key": {
+          "type": "string",
+          "description": "Cache key strategy",
+          "examples": ["hash(beads + fragments + detected)"]
+        }
+      }
+    },
+    "version": {
+      "type": "string",
+      "description": "Assembler version",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    }
+  },
+  "additionalProperties": false
+}

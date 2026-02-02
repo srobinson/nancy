@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nancy.dev/schemas/bead.project.v1.json",
+  "title": "Nancy Project Bead",
+  "description": "Project context and metadata for Nancy AI assistant",
+  "type": "object",
+  "required": ["nancy_version", "name"],
+  "properties": {
+    "nancy_version": {
+      "type": "string",
+      "description": "Schema version for migration support",
+      "pattern": "^\\d+\\.\\d+$",
+      "examples": ["1.0"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Project name",
+      "minLength": 1,
+      "examples": ["nancy-bubble-gum", "my-awesome-app"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief project description",
+      "maxLength": 1000,
+      "examples": ["SQLite data layer for Nancy autonomous framework"]
+    },
+    "type": {
+      "type": "string",
+      "description": "Project type/classification",
+      "enum": ["production", "poc", "prototype", "library", "tool", "service", "application"],
+      "examples": ["production"]
+    },
+    "tech_stack": {
+      "type": "object",
+      "description": "Technology stack information",
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["TypeScript", "JavaScript"]]
+        },
+        "frameworks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["React", "Next.js"]]
+        },
+        "databases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["PostgreSQL", "Redis"]]
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["Docker", "GitHub Actions"]]
+        }
+      },
+      "additionalProperties": true
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Primary purpose or goal of the project",
+      "examples": ["Data persistence for task execution"]
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Preferred coding patterns or architectural decisions",
+      "items": { "type": "string" },
+      "examples": [["Functional style", "Minimal abstractions", "Convention over configuration"]]
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Project constraints or requirements",
+      "items": { "type": "string" },
+      "examples": [["Must work offline", "Zero external dependencies"]]
+    },
+    "active_work": {
+      "type": "object",
+      "description": "Currently active work items",
+      "properties": {
+        "linear_issues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Active Linear issue IDs",
+          "examples": [["NBA-123", "NBA-456"]]
+        },
+        "current_focus": {
+          "type": "string",
+          "description": "Current area of focus",
+          "examples": ["Authentication system", "Performance optimization"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "team": {
+      "type": "object",
+      "description": "Team information",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Team size"
+        },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Team member names or handles"
+        },
+        "practices": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Team practices or conventions",
+          "examples": [["Pair programming on complex features", "PR reviews required"]]
+        }
+      },
+      "additionalProperties": true
+    },
+    "links": {
+      "type": "object",
+      "description": "Relevant project links",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "format": "uri",
+          "description": "Git repository URL"
+        },
+        "documentation": {
+          "type": "string",
+          "format": "uri",
+          "description": "Documentation URL"
+        },
+        "linear_project": {
+          "type": "string",
+          "description": "Linear project ID or URL"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "rootPath": "/Users/alphab/Dev/LLM/DEV/TMP/ralph/.planning",
+  "include": [
+    "**/*.md",
+    "**/*.mdx"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/.*/**"
+  ],
+  "createdAt": "2026-01-19T07:15:26.548Z",
+  "updatedAt": "2026-01-19T07:15:26.550Z"
+}

@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "foxundermoon.shell-format",
+    "biomejs.biome",
+    "esbenp.prettier-vscode",
+    "DavidAnson.vscode-markdownlint",
+    "streetsidesoftware.code-spell-checker",
+    "editorconfig.editorconfig",
+    "mikestead.dotenv",
+    "bradlc.vscode-tailwindcss"
+  ]
+}

@@ -1,0 +1,6 @@
+# ShellCheck configuration
+
+# SC1091: Not following sourced files
+# We source files from relative paths that shellcheck can't resolve
+# SC2155
+disable=SC1091,SC2124,SC2155

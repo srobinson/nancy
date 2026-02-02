@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nancy.dev/schemas/task.schema.json",
+  "title": "Nancy Task Schema",
+  "description": "Minimal task specification for autonomous agents",
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task identifier (matches directory name)",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "goal": {
+      "type": "string",
+      "description": "What to accomplish (the 'why' and 'what')"
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Hard limitations on implementation",
+      "items": { "type": "string" }
+    },
+    "criteria": {
+      "type": "array",
+      "description": "Success criteria - simple declarative statements",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "done": { "type": "boolean", "default": false }
+        },
+        "required": ["description"]
+      },
+      "minItems": 1
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional implementation guidance"
+    }
+  },
+  "required": ["task", "goal", "criteria"],
+  "additionalProperties": false
+}

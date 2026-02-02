@@ -1,0 +1,7 @@
+version: "0.2"
+ignorePaths: [".git/**", "*.min.js", ".claude/**", "\.nancy/**"]
+dictionaryDefinitions: []
+dictionaries: []
+words: []
+ignoreWords: []
+import: []
