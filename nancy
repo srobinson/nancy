@@ -63,6 +63,7 @@ main() {
 	status) cmd::status "${@:2}" ;;
 	doctor) cmd::doctor "${@:2}" ;;
 	go) cmd::go "${@:2}" ;;
+	experiment) cmd::experiment "${@:2}" ;;
 	orchestrate) cmd::orchestrate "${@:2}" ;;
 	direct) cmd::direct "${@:2}" ;;
 	pause) cmd::pause "${@:2}" ;;
