@@ -60,8 +60,8 @@ _experiment_setup_repo() {
 	local repo_dir="${exp_dir}/${condition}"
 
 	if [[ -d "$repo_dir" ]]; then
-		log::info "Repo already exists at $repo_dir — reusing"
-		return 0
+		log::info "Removing existing $repo_dir for fresh run"
+		rm -rf "$repo_dir"
 	fi
 
 	log::info "Cloning $slug → $repo_dir"
@@ -206,9 +206,14 @@ cmd::experiment() {
 	ui::header "Experiment: ${slug}#${issue_num}"
 	log::info "Issue: ${issue[title]}"
 
-	# 3. Setup experiment directory
+	# 3. Setup experiment directory (clean slate for re-runs)
 	local task_name="EXP-${repo_name}-${issue_num}"
 	local exp_dir="${NANCY_TASK_DIR}/${task_name}"
+
+	if [[ -d "$exp_dir" ]]; then
+		log::info "Cleaning existing experiment directory for fresh run"
+		rm -rf "$exp_dir"
+	fi
 
 	mkdir -p "$exp_dir/results"
 
