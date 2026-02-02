@@ -92,7 +92,6 @@ def _aggregate_iterations(per_iteration):
 
 def format_comparison_table(control_agg, treatment_agg, control_label="Control (no fmm)", treatment_label="Treatment (fmm)"):
     """Format the comparison table as a string."""
-    col_w = max(len(control_label), len(treatment_label), 20)
 
     def _fmt_tokens(n):
         if n >= 1000:

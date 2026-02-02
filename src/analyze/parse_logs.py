@@ -108,21 +108,9 @@ def parse_log_file(path):
                             "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
                         })
                         seq += 1
-                elif event_data.get("type") == "message_delta":
-                    usage = event_data.get("usage")
-                    if usage:
-                        events.append({
-                            "seq": seq,
-                            "type": "token_usage",
-                            "session_id": session_id,
-                            "source": "stream_message_delta",
-                            "message_id": None,
-                            "input_tokens": usage.get("input_tokens", 0),
-                            "output_tokens": usage.get("output_tokens", 0),
-                            "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
-                            "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
-                        })
-                        seq += 1
+                # Skip message_delta — it only carries output_tokens which are
+                # already reported by the assistant event. Including it would
+                # double-count since message_delta has no message_id for dedup.
 
             elif evt_type == "user":
                 events.append({
