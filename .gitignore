@@ -9,3 +9,5 @@ worktrees/
 .env.ralph
 *.bak
 z/test.sh
+__pycache__/
+*.pyc
