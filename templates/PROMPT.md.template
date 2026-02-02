@@ -19,6 +19,32 @@ PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
 
 Use `git log --format=full -10` to understand recent changes and context from previous iterations.
 
+## 0.1 Code Navigation — Sidecar-First
+
+Source files in this project may have `.fmm` sidecar companions. For every `foo.ts` there may be a `foo.ts.fmm` containing structured metadata: exports, imports, dependencies, and line count.
+
+**MANDATORY PROTOCOL — before reading any source file:**
+
+1. CHECK if `filename.fmm` exists (Glob or direct Read)
+2. READ the sidecar — it tells you the file's exports, imports, dependencies, and size
+3. ONLY open the source file if you need to see or modify the implementation
+
+**Navigation patterns:**
+
+| Task | Do this | NOT this |
+|---|---|---|
+| Find where X is defined | `Grep "exports:.*X" **/*.fmm` | `Grep "function X" **/*.ts` |
+| Understand architecture | `Glob **/*.fmm` then read sidecars | Read random source files |
+| Find dependents of a file | `Grep "dependencies:.*filename" **/*.fmm` | Grep import statements in source |
+| Find files using package X | `Grep "imports:.*X" **/*.fmm` | Grep source for import/require |
+
+**MCP tools (when fmm server available):**
+- `fmm_lookup_export(name)` — O(1) symbol lookup
+- `fmm_dependency_graph(file)` — upstream + downstream deps
+- `fmm_search({export?, imports?, depends_on?})` — multi-criteria search
+
+**FALL BACK** to Grep/Glob on source only when searching file *contents* (not structure).
+
 ## Collaboration Model
 
 **You are one worker in a relay team.** Tasks often span multiple sessions/iterations.
