@@ -1,7 +1,6 @@
 """Tests for src/analyze/compare.py — aggregation, formatting, JSON output."""
 
 import json
-from pathlib import Path
 
 from src.analyze.compare import (
     analyze_condition, _aggregate_iterations, format_comparison_table,

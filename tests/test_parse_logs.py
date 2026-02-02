@@ -1,8 +1,5 @@
 """Tests for src/analyze/parse_logs.py — NDJSON parsing and event extraction."""
 
-import json
-from pathlib import Path
-
 from src.analyze.parse_logs import parse_log_file, parse_experiment_logs, _extract_file_path, _extract_command
 from tests.conftest import (
     write_ndjson, make_init_event, make_assistant_event, make_tool_use_block,

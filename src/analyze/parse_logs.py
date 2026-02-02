@@ -152,7 +152,7 @@ def parse_experiment_logs(log_dir):
     """Parse all iteration logs in a directory.
 
     Returns dict of {iteration_name: [events]} sorted by iteration order.
-    Skips review iterations and non-.log files.
+    Skips formatted logs (*.formatted.log) and special logs (token-alerts.log, watcher.log).
     """
     log_dir = Path(log_dir)
     iterations = {}

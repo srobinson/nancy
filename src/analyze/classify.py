@@ -186,16 +186,15 @@ def compute_phase_summary(events, first_edit_seq):
     nav_fmm_count = 0
     nav_raw_count = 0
 
-    # Track unique message_ids to avoid double-counting tokens
-    # (message_start and assistant message can report same message)
+    # (stream_message_start and assistant message can both report the same message)
     seen_message_ids = set()
 
     for event in events:
         if event["type"] == "token_usage":
             msg_id = event.get("message_id")
-            # Prefer assistant message token data over stream_event
-            # stream_message_start comes first, assistant event comes later with same id
-            # We'll take whichever we see first per message_id
+            # Deduplicate by message_id: we keep the first token_usage event we see
+            # for a given message_id (typically the stream_message_start) and ignore
+            # any later events with the same id, including assistant message updates.
             if msg_id and msg_id in seen_message_ids:
                 continue
             if msg_id:
