@@ -27,11 +27,23 @@ jobs:
           fi
         shell: bash
 
-      - name: Make test runner executable
-        run: chmod +x tests/run.sh tests/unit/*.sh tests/integration/*.sh
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Run tests
-        run: ./tests/run.sh
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run bash tests
+        if: hashFiles('tests/run.sh') != ''
+        run: |
+          chmod +x tests/run.sh tests/unit/*.sh tests/integration/*.sh
+          ./tests/run.sh
+
+      - name: Run pytest
+        if: hashFiles('tests/conftest.py') != ''
+        run: python3 -m pytest tests/ -v
 
   lint:
     runs-on: ubuntu-latest
