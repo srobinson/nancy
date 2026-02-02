@@ -98,7 +98,8 @@ def format_comparison_table(control_agg, treatment_agg, control_label="Control (
     def _first_edit_str(agg):
         if agg["first_edit_iteration"]:
             iter_short = agg["first_edit_iteration"].split("-")[-1]  # e.g. "iter1"
-            return f"{iter_short} @ {agg['first_edit_pct']}%"
+            pct = agg["first_edit_pct"]
+            return f"{iter_short} @ {pct}%" if pct is not None else iter_short
         return "no edits"
 
     def _sidecar_str(agg, is_treatment):
