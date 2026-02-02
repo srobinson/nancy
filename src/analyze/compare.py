@@ -49,9 +49,6 @@ def _aggregate_iterations(per_iteration):
         "first_edit_pct": None,
     }
 
-    total_events_before_first_edit = 0
-    total_events_overall = 0
-
     for name, summary in sorted(per_iteration.items()):
         nav = summary["nav_phase"]
         agg["nav_reads"] += nav["reads"]

@@ -16,23 +16,25 @@ Phase boundary: "first edit" = first Edit or Write to a source file
 import re
 
 # Files that don't count as "real edits" for first-edit detection
-EXCLUDED_EDIT_PATTERNS = [
+_EXCLUDED_EDIT_PATTERNS = [
     r"ISSUES\.md$",
     r"COMPLETE$",
     r"\.nancy/",
     r"config\.json$",
     r"token-usage\.json$",
 ]
+EXCLUDED_EDIT_RE = [re.compile(p) for p in _EXCLUDED_EDIT_PATTERNS]
 
 # Bash commands that count as navigation
-NAV_BASH_PATTERNS = [
+_NAV_BASH_PATTERNS = [
     r"^(ls|find|tree|wc|cat|head|tail|stat|file)\b",
     r"^git\s+(log|show|diff|blame|status)",
     r"^(rg|grep|ag|ack)\b",
 ]
+NAV_BASH_RE = [re.compile(p, re.IGNORECASE) for p in _NAV_BASH_PATTERNS]
 
 # Bash commands that count as task work
-TASK_BASH_PATTERNS = [
+_TASK_BASH_PATTERNS = [
     r"^git\s+(add|commit|push|checkout|branch|merge|rebase|stash)",
     r"^(npm|pnpm|yarn|bun)\s+(test|build|run|install)",
     r"^(just|make|cargo|go)\s+(test|build|check|run)",
@@ -42,12 +44,14 @@ TASK_BASH_PATTERNS = [
     r"^(tsc|eslint|prettier)\b",
     r"^(python|node|deno|bun)\b",
 ]
+TASK_BASH_RE = [re.compile(p, re.IGNORECASE) for p in _TASK_BASH_PATTERNS]
 
 # Bash commands that count as boilerplate
-BOILERPLATE_BASH_PATTERNS = [
+_BOILERPLATE_BASH_PATTERNS = [
     r"^nancy\s+(inbox|msg|archive|status)",
     r"^echo\s+.*done.*COMPLETE",
 ]
+BOILERPLATE_BASH_RE = [re.compile(p, re.IGNORECASE) for p in _BOILERPLATE_BASH_PATTERNS]
 
 
 def classify_events(events):
@@ -98,10 +102,7 @@ def _find_first_edit(events):
 
 def _is_excluded_file(path):
     """Check if file path matches exclusion patterns."""
-    for pattern in EXCLUDED_EDIT_PATTERNS:
-        if re.search(pattern, path):
-            return True
-    return False
+    return any(rx.search(path) for rx in EXCLUDED_EDIT_RE)
 
 
 def _classify_tool_call(event):
@@ -128,19 +129,19 @@ def _classify_tool_call(event):
         if skill and "nancy" in skill:
             return "boilerplate"
         return "other"
-    if name == "Bash" and _matches_any(cmd, BOILERPLATE_BASH_PATTERNS):
+    if name == "Bash" and _matches_compiled(cmd, BOILERPLATE_BASH_RE):
         return "boilerplate"
 
     # Task work tools
     if name in ("Edit", "Write"):
         return "task_work"
-    if name == "Bash" and _matches_any(cmd, TASK_BASH_PATTERNS):
+    if name == "Bash" and _matches_compiled(cmd, TASK_BASH_RE):
         return "task_work"
 
     # Navigation tools
     if name in ("Read", "Grep", "Glob", "WebFetch"):
         return "navigation"
-    if name == "Bash" and _matches_any(cmd, NAV_BASH_PATTERNS):
+    if name == "Bash" and _matches_compiled(cmd, NAV_BASH_RE):
         return "navigation"
     if name == "Task":
         return "navigation"
@@ -162,12 +163,9 @@ def _classify_tool_call(event):
     return "other"
 
 
-def _matches_any(text, patterns):
-    """Check if text matches any of the regex patterns."""
-    for pattern in patterns:
-        if re.search(pattern, text, re.IGNORECASE):
-            return True
-    return False
+def _matches_compiled(text, compiled_patterns):
+    """Check if text matches any of the pre-compiled regex patterns."""
+    return any(rx.search(text) for rx in compiled_patterns)
 
 
 def compute_phase_summary(events, first_edit_seq):

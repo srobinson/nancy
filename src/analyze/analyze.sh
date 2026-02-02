@@ -16,5 +16,5 @@ analyze::run() {
 		exit 1
 	fi
 
-	python3 -m src.analyze "$control_dir" "$treatment_dir" "$@"
+	python3 -m src.analyze "${control_dir}" "${treatment_dir}" "$@"
 }

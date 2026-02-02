@@ -23,7 +23,7 @@ def parse_log_file(path):
     events = []
     seq = 0
 
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -218,7 +218,7 @@ def _print_summary(iterations):
         print(f"  Output tokens:   {total_output:,}")
         print(f"  Cache create:    {total_cache_create:,}")
         print(f"  Cache read:      {total_cache_read:,}")
-        print(f"\n  Tool breakdown:")
+        print("\n  Tool breakdown:")
         for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
             print(f"    {tool:40s} {count}")
 
