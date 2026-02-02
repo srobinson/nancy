@@ -18,4 +18,5 @@
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/inbox.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/notify-test.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/go.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cmd/experiment.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/help.sh"

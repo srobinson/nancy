@@ -16,10 +16,12 @@ Phase boundary: "first edit" = first Edit or Write to a source file
 import re
 
 # Files that don't count as "real edits" for first-edit detection
+# NOTE: Use negative lookahead for .nancy/ to exclude internal files
+# but NOT experiment worktrees which live under .nancy/tasks/
 _EXCLUDED_EDIT_PATTERNS = [
     r"ISSUES\.md$",
     r"COMPLETE$",
-    r"\.nancy/",
+    r"\.nancy/(?!tasks/)",  # .nancy/ internal files, but not worktrees
     r"config\.json$",
     r"token-usage\.json$",
 ]

@@ -1,0 +1,169 @@
+# Authority
+
+**The Human controls this task. The orchestrator speaks for the Human. Follow directives immediately.**
+
+# [{{PROJECT_IDENTIFIER}}]: {{PROJECT_TITLE}}
+
+**Session:** `{{SESSION_ID}}`
+
+{{PROJECT_DESCRIPTION}}
+
+## 0. Working Environment
+
+PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
+
+- You are working in a git worktree at: {{WORKTREE_DIR}}
+- Branch: nancy/{{TASK_NAME}}
+- All your commits stay isolated to this worktree
+- Push with: git push -u origin nancy/{{TASK_NAME}}
+
+Use `git log --format=full -10` to understand recent changes and context from previous iterations.
+
+---
+
+## 🚨 MANDATORY: Sidecar-First Navigation Protocol
+
+**This codebase has FMM metadata sidecars. You MUST use them.**
+
+Every source file `foo.ts` has a companion `foo.ts.fmm` containing:
+```yaml
+file: path/to/foo.ts
+fmm: v0.2
+exports: [functionA, ClassB, TYPE_C]    # What this file exports
+imports: [lodash, express]               # NPM packages used
+dependencies: [./bar.js, ./utils/x.js]   # Local files imported
+loc: 150                                 # Lines of code
+```
+
+### ⛔ VIOLATION: Reading source before sidecar
+
+```
+# WRONG - Don't do this
+Read src/auth/service.ts        # Reading source blindly
+
+# RIGHT - Always check sidecar first
+Read src/auth/service.ts.fmm    # Check what it exports
+# Then only if needed:
+Read src/auth/service.ts        # Read source with purpose
+```
+
+### Navigation Commands
+
+| Goal | Sidecar Command | Why It's Better |
+|------|-----------------|-----------------|
+| Find where `X` is defined | `Grep "exports:.*X" **/*.fmm` | Instant O(1) lookup vs scanning all source |
+| Find files using `Y` | `Grep "dependencies:.*Y" **/*.fmm` | Direct dependency map |
+| Understand module structure | `Glob src/**/*.fmm` then read sidecars | Metadata only, no source bloat |
+| Check file size before reading | Read `file.fmm`, check `loc:` | Skip 1000+ line files if possible |
+
+### Step-by-Step Protocol
+
+**When you need to find something:**
+
+1. **FIRST**: `Grep "exports:.*SymbolName" **/*.fmm`
+2. **IF FOUND**: Note the file path from the sidecar
+3. **CHECK**: Read that file's `.fmm` to understand its role
+4. **THEN**: Read source ONLY if you need implementation details
+
+**When you need to understand a file:**
+
+1. **FIRST**: `Read path/to/file.fmm`
+2. **LEARN**: What it exports, imports, depends on
+3. **DECIDE**: Do I actually need the source?
+4. **THEN**: Read source only if modification needed
+
+**When you need to trace dependencies:**
+
+1. **FIRST**: `Grep "dependencies:.*targetfile" **/*.fmm`
+2. **RESULT**: List of all files that depend on target
+3. **NO NEED**: To grep through source import statements
+
+### Efficiency Expectation
+
+- You should read 2-3x more `.fmm` files than source files
+- Most navigation should complete via sidecars alone
+- Source reads should be purposeful (for modification or deep understanding)
+
+---
+
+## Collaboration Model
+
+**You are one worker in a relay team.** Tasks often span multiple sessions/iterations.
+
+- **No pressure to finish everything** - quality over speed, always
+- **Handover via git commits** - Write detailed commit messages as if briefing the next developer
+- **Each commit is a checkpoint** - Future you (or another worker) will read your commits to understand context
+- **Partial progress is valuable** - Completing one issue well is better than rushing through many
+
+Your commit message format:
+```
+nancy[ISSUE_ID]: Clear summary of what was done
+
+- Detailed bullet points of changes
+- Decisions made and why
+- Known issues or next steps
+- Any context the next worker needs
+```
+
+## 1. Goal
+
+1. Implement all issues `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md` completely.
+2. All Success criteria must all pass.
+
+## 2. Work Loop
+
+0. Select issue to work on in list order
+1. Use linear-server - get_issue (MCP)(id: ISSUE_ID): Ingest issue
+2. Use linear-server - update_issue (MCP)(id: ISSUE_ID): Update state -> "In Progress"
+3. Work each task
+
+IMPORTANT
+- Use parallel tool calls whenever possible
+- Use your tokens wisely :> spawn subagents whenever possible
+
+## 3. Completing an Issue
+
+**ALL THREE steps are REQUIRED for each issue:**
+
+1. **Update Linear FIRST:** `linear-server - update_issue(id: ISSUE_ID, state: "Worker Done")`
+2. **Mark checkbox:** `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
+3. **Commit with handover:** `nancy[ISSUE_ID]: <detailed_description>`
+
+⚠️ **Linear state change is MANDATORY** - the orchestrator tracks progress via Linear, not checkboxes.
+
+If you're ending a session mid-issue:
+- Commit your progress with clear handover notes
+- Leave Linear state as "In Progress"
+- The next iteration will continue from your commits
+
+## 4. Communication
+
+**Check inbox at start and periodically:**
+```bash
+nancy inbox
+```
+
+**Send messages to orchestrator:**
+```bash
+nancy msg "your message here"
+```
+
+## 5. Quality Gates
+
+Before marking any issue complete:
+
+1. **Code compiles** - `just check` or equivalent must pass
+2. **Tests pass** - `just test` or run relevant test suite
+3. **No regressions** - Don't break existing functionality
+
+## 6. Session End
+
+When your task is complete OR you run out of capacity:
+
+1. Mark ISSUES.md checkboxes for completed work
+2. Commit with detailed handover message
+3. Create file: `echo "done" > {{NANCY_CURRENT_TASK_DIR}}/COMPLETE`
+
+---
+
+**Remember: Sidecars first, source second. Navigate with metadata, modify with purpose.**
