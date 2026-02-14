@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'You have persistent geometric memory via the am MCP server. At session start: call am_query with the user'\\''s first message to recall prior context. During work: call am_buffer with substantive exchanges. After meaningful responses: call am_activate_response. For hard-won insights: call am_salient. Never mention the memory system unless asked.'"
+          }
+        ]
+      }
+    ]
+  }
+}

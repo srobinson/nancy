@@ -1,0 +1,20 @@
+{
+  "name": "attention-matters",
+  "owner": {
+    "name": "Stuart Robinson",
+    "email": "stuart@alphab.io",
+    "url": "https://github.com/srobinson"
+  },
+  "metadata": {
+    "description": "Geometric memory plugins for AI coding agents",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "am-memory",
+      "source": "./am-plugin",
+      "description": "Persistent geometric memory across Claude Code sessions via the DAE attention engine. Zero-config — install once, memory works everywhere.",
+      "version": "0.1.3"
+    }
+  ]
+}

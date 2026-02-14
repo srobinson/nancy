@@ -1,0 +1,13 @@
+{
+  "name": "am-memory",
+  "description": "Persistent geometric memory across Claude Code sessions via the DAE attention engine",
+  "version": "0.1.3",
+  "author": {
+    "name": "Stuart Robinson",
+    "url": "https://github.com/srobinson"
+  },
+  "homepage": "https://github.com/srobinson/attention-matters",
+  "repository": "https://github.com/srobinson/attention-matters",
+  "license": "MIT",
+  "keywords": ["memory", "ai", "claude", "agent", "geometric-memory", "mcp"]
+}

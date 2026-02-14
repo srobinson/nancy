@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "am": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "attention-matters@latest", "serve"]
+    }
+  }
+}
