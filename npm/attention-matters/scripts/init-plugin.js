@@ -32,17 +32,13 @@ function logError(msg) {
 }
 
 function commandExists(cmd) {
-  try {
-    execSync(`command -v ${cmd}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+  const result = spawnSync("which", [cmd], { stdio: "ignore", timeout: 5000 });
+  return result.status === 0;
 }
 
 function claudeVersion() {
   try {
-    return execSync("claude --version", { encoding: "utf-8" }).trim();
+    return execSync("claude --version", { encoding: "utf-8", timeout: 10000 }).trim();
   } catch {
     return null;
   }
@@ -52,6 +48,7 @@ function isMarketplaceAdded() {
   try {
     const out = execSync("claude plugin marketplace list", {
       encoding: "utf-8",
+      timeout: 30000,
     });
     return out.includes(MARKETPLACE_NAME);
   } catch {
@@ -61,7 +58,7 @@ function isMarketplaceAdded() {
 
 function isPluginInstalled() {
   try {
-    const out = execSync("claude plugin list", { encoding: "utf-8" });
+    const out = execSync("claude plugin list", { encoding: "utf-8", timeout: 30000 });
     return out.includes(PLUGIN_NAME);
   } catch {
     return false;
@@ -92,7 +89,7 @@ function delegateToNative() {
       execFileSync(candidate, args, { stdio: "inherit" });
       process.exit(0);
     } catch (err) {
-      if (err.status !== undefined) {
+      if (err.status != null) {
         process.exit(err.status);
       }
     }
