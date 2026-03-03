@@ -3,10 +3,19 @@
 # Auto-detect role based on git structure:
 # - Worker: in worktree (.git is a file)
 # - Orchestrator: in main repo (.git is a directory)
+#
+# nancy exits non-zero when no task is active — allow operation immediately.
+
+has_pending() {
+    local output
+    output=$("$@" 2>&1) || return 1
+    # nancy succeeded and returned output — check it's not empty/whitespace
+    [[ -n "${output// /}" ]]
+}
 
 if [ -f .git ]; then
     # WORKER: Check for orchestrator directives
-    nancy inbox | { ! grep -qi "no pending"; } && {
+    if has_pending nancy inbox; then
         cat <<'EOF'
 {
   "continue": false,
@@ -18,10 +27,10 @@ if [ -f .git ]; then
 }
 EOF
         exit 0
-    }
+    fi
 elif [ -d .git ]; then
     # ORCHESTRATOR: Check for worker messages
-    nancy messages | { ! grep -qi "no pending"; } && {
+    if has_pending nancy messages; then
         cat <<'EOF'
 {
   "continue": false,
@@ -33,8 +42,8 @@ elif [ -d .git ]; then
 }
 EOF
         exit 0
-    }
+    fi
 fi
 
-# No messages/directives found - allow operation
+# No active task or no pending messages — allow operation
 exit 0

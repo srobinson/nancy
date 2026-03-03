@@ -6,6 +6,10 @@
 
 **Session:** `{{SESSION_ID}}`
 
+## 🧠 Memory Recall
+
+**At session start, call `am_query` with a summary of the parent issue.**
+
 {{PROJECT_DESCRIPTION}}
 
 ## 0. Working Environment
@@ -17,7 +21,7 @@ PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
 - All your commits stay isolated to this worktree
 - Push with: git push -u origin nancy/{{TASK_NAME}}
 
-Use `git log --format=full -10` to understand recent changes and context from previous iterations.
+Use `git log --format=full -3` to understand recent changes and context from previous iterations.
 
 ---
 
@@ -112,14 +116,18 @@ nancy[ISSUE_ID]: Clear summary of what was done
 
 ## 2. Work Loop
 
-0. Select issue to work on in list order
-1. Use linear-server - get_issue (MCP)(id: ISSUE_ID): Ingest issue
-2. Use linear-server - update_issue (MCP)(id: ISSUE_ID): Update state -> "In Progress"
-3. Work each task
+**Work on ONE issue at a time, in list order.**
+
+0. Select the FIRST uncompleted issue from ISSUES.md
+1. Use linear-server - get_issue (MCP)(id: ISSUE_ID): Read the issue
+2. Use linear-server - save_issue (MCP)(id: ISSUE_ID, state: "In Progress")
+3. Implement, test, commit
+4. Complete the issue (Section 3), then repeat from step 0 if token budget allows
 
 IMPORTANT
-- Use parallel tool calls whenever possible
-- Use your tokens wisely :> spawn subagents whenever possible
+- Only ONE issue may be "In Progress" at a time
+- Parallelize tool calls WITHIN an issue (e.g. read multiple files at once), NOT across issues
+- Use your tokens wisely :> spawn subagents for work within the current issue
 
 ## 3. Completing an Issue
 
@@ -150,10 +158,12 @@ nancy msg "your message here"
 
 ## 5. Quality Gates
 
+**Always use `just` commands — never raw `cargo`, `npm`, `make`, etc.**
+
 Before marking any issue complete:
 
-1. **Code compiles** - `just check` or equivalent must pass
-2. **Tests pass** - `just test` or run relevant test suite
+1. **Code compiles** - `just check` must pass
+2. **Tests pass** - `just test` must pass
 3. **No regressions** - Don't break existing functionality
 
 ## 6. Session End

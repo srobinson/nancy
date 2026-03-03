@@ -6,7 +6,9 @@
     // "source.fixAll.biome": "always"
   },
   "editor.tabSize": 2,
-  "editor.rulers": [120],
+  "editor.rulers": [
+    120
+  ],
   "shellformat.path": "/opt/homebrew/bin/shfmt",
   "shellformat.effectLanguages": [
     "shellscript",
@@ -21,12 +23,10 @@
     "azcli",
     "bats"
   ],
-
   // ---------- file handling ----------
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
   "files.trimFinalNewlines": true,
-
   // ---------- language overrides ----------
   "[markdown]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -40,9 +40,12 @@
     "editor.defaultColorDecorators": "never",
     "editor.defaultFormatter": "mkhl.shfmt"
   },
-  "[dotenv]": { "editor.defaultFormatter": "mkhl.shfmt" },
+  "[dotenv]": {
+    "editor.defaultFormatter": "mkhl.shfmt"
+  },
   "[ignore]": {
     "editor.defaultFormatter": "mkhl.shfmt"
   },
   "shellformat.flag": "-i 2 -ci -bn -sr -kp -ln -w",
+  "python-envs.pythonProjects": [],
 }

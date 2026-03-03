@@ -81,7 +81,7 @@ cmd::messages() {
 
 	if [[ ! -d "$inbox_dir" ]]; then
 		echo "No pending messages from worker"
-		return 0
+		return 1
 	fi
 
 	local files
@@ -89,7 +89,7 @@ cmd::messages() {
 
 	if [[ -z "$files" ]]; then
 		echo "No pending messages from worker"
-		return 0
+		return 1
 	fi
 
 	echo "📬 Pending messages from worker:"

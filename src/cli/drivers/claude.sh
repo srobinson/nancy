@@ -160,12 +160,23 @@ cli::claude::run_prompt() {
 	# so the PID file contains Claude's actual process ID.
 	local pid_file="$NANCY_TASK_DIR/.worker_pid"
 
+	# Background pipeline so bash can process SIGINT trap during execution.
+	# Without this, bash defers trap handling until the foreground pipeline
+	# completes, but Claude catches SIGINT internally (to cancel tool
+	# execution, not to exit) — deadlocking the script on Ctrl+C.
+	set -o pipefail
 	( echo $BASHPID > "$pid_file"; exec "$CLAUDE_CMD" "${args[@]}" ) \
 		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" \
 		| _claude_format_stream \
 		| fmt::strip_ansi \
-		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log"
-	local exit_code=${PIPESTATUS[0]}
+		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log" &
+	local pipeline_pid=$!
+
+	# wait is interruptible by signals, so the SIGINT trap in start.sh
+	# fires immediately on Ctrl+C and can kill Claude via the PID file.
+	wait $pipeline_pid 2>/dev/null
+	local exit_code=$?
+	set +o pipefail
 
 	rm -f "$pid_file"
 

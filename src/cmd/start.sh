@@ -16,11 +16,20 @@ _start_cleanup() {
 			local worker_pid
 			worker_pid=$(cat "$pid_file")
 			if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+				# SIGTERM first for graceful shutdown
 				kill "$worker_pid" 2>/dev/null || true
 				sleep 1
+				# SIGKILL if still alive
 				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
 			fi
 			rm -f "$pid_file"
+		fi
+		# Kill any remaining pipeline processes (tee, jq) that
+		# may linger after Claude exits. jobs -p lists background PIDs.
+		local remaining_pids
+		remaining_pids=$(jobs -p 2>/dev/null)
+		if [[ -n "$remaining_pids" ]]; then
+			kill $remaining_pids 2>/dev/null || true
 		fi
 		# Clean up sentinel
 		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true

@@ -70,20 +70,19 @@ token::update() {
 	# Calculate this turn's input total
 	local turn_input=$((input + cache_creation + cache_read))
 
-	# Read existing output total (input is not cumulative - each turn has full context)
-	local prev_output=0
+	# Read existing totals (input uses high-water mark since turns can report
+	# lower values due to cache invalidation or interleaved subagent messages)
+	local prev_input=0 prev_output=0
 	if [[ -f "$usage_file" ]]; then
+		prev_input=$(jq -r '.total_input // 0' "$usage_file")
 		prev_output=$(jq -r '.total_output // 0' "$usage_file")
 	fi
 
-	# For context tracking, we care about the LATEST input total (not cumulative)
-	# because each turn's input includes the full conversation history
-	# Output tokens accumulate as they become part of future input
-	local total_input=$turn_input
+	# High-water mark: context usage should only ever increase.
+	# Each turn reports its full input (history + new), but concurrent subagents
+	# and cache invalidation can cause the reported total to fluctuate.
+	local total_input=$((turn_input > prev_input ? turn_input : prev_input))
 	local total_output=$((prev_output + output))
-	# claude does not count input + output together for context limit
-	# TODO: This is what I am seeing in practice, but verify with more testing
-	# local total=$((total_input + total_output))
 	local percent
 	percent=$(awk "BEGIN {printf \"%.1f\", ($total_input / $TOKEN_CONTEXT_LIMIT) * 100}")
 

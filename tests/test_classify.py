@@ -108,7 +108,7 @@ class TestClassifyToolCall:
         assert _classify_tool_call(e) == "other"
 
     def test_bash_git_log_is_navigation(self):
-        e = _make_tool_event("Bash", command="git log --oneline -5")
+        e = _make_tool_event("Bash", command="git log --format=full -5")
         assert _classify_tool_call(e) == "navigation"
 
     def test_bash_git_commit_is_task_work(self):

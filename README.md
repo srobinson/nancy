@@ -2,7 +2,7 @@
 
 # Nancy
 
-[![Test Suite](https://github.com/YOUR_USERNAME/nancy/actions/workflows/test.yml/badge.svg)](https://github.com/YOUR_USERNAME/nancy/actions/workflows/test.yml)
+[![Test Suite](https://github.com/srobinson/nancy/actions/workflows/test.yml/badge.svg)](https://github.com/srobinson/nancy/actions/workflows/test.yml)
 
 Autonomous task execution loop with context awareness and token management.
 

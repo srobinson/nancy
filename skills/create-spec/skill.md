@@ -13,7 +13,7 @@ Before asking questions, understand the codebase:
 
 ```bash
 ls -la
-git log --oneline -10
+git log --format=full -3
 find . -type f -name "*.ts" -o -name "*.py" -o -name "*.sh" | head -30
 ```
 

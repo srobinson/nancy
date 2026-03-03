@@ -26,10 +26,11 @@ nancy messages
 ```bash
 # Parallel batch 2 — worker activity (always from worktree)
 tail -60 {{NANCY_CURRENT_TASK_DIR}}/logs/nancy-{{TASK_NAME}}-iter*.formatted.log
-cd {{WORKTREE_DIR}} && git log --oneline -10
+cd {{WORKTREE_DIR}} && git log --format=full -3
 ```
 
 Then read the task prompt only if you need to understand the work:
+
 ```bash
 cat {{NANCY_CURRENT_TASK_DIR}}/PROMPT.{{TASK_NAME}}.md
 ```
@@ -42,11 +43,11 @@ The worker runs asynchronously. **Do not rely on `nancy status` session counts o
 
 **How to know if the worker is active:**
 
-| Signal | Running | Stopped |
-|--------|---------|---------|
-| `*.formatted.log` line count | Growing between checks | Static |
-| `token-usage.json` percent | Increasing | Unchanged |
-| Raw log (`*.log`) file size | Growing (check with `ls -la`) | Static |
+| Signal                       | Running                       | Stopped   |
+| ---------------------------- | ----------------------------- | --------- |
+| `*.formatted.log` line count | Growing between checks        | Static    |
+| `token-usage.json` percent   | Increasing                    | Unchanged |
+| Raw log (`*.log`) file size  | Growing (check with `ls -la`) | Static    |
 
 **Quick check:** Read the last 60 lines of `*.formatted.log`. If you see recent tool calls (🔧) and reasoning (💬), the worker is active.
 
@@ -56,12 +57,13 @@ The worker runs asynchronously. **Do not rely on `nancy status` session counts o
 
 Two log formats exist per iteration:
 
-| File | Format | Use |
-|------|--------|-----|
-| `nancy-{{TASK_NAME}}-iter<N>.formatted.log` | Human-readable (🔧 tools, 💬 reasoning) | **Always read this one** |
-| `nancy-{{TASK_NAME}}-iter<N>.log` | Raw JSON stream events | Never read directly — too noisy |
+| File                                        | Format                                  | Use                             |
+| ------------------------------------------- | --------------------------------------- | ------------------------------- |
+| `nancy-{{TASK_NAME}}-iter<N>.formatted.log` | Human-readable (🔧 tools, 💬 reasoning) | **Always read this one**        |
+| `nancy-{{TASK_NAME}}-iter<N>.log`           | Raw JSON stream events                  | Never read directly — too noisy |
 
 To monitor:
+
 ```bash
 # Read latest activity (use Read tool, not bash tail for large output)
 tail -60 {{NANCY_CURRENT_TASK_DIR}}/logs/nancy-{{TASK_NAME}}-iter*.formatted.log
@@ -70,14 +72,14 @@ tail -60 {{NANCY_CURRENT_TASK_DIR}}/logs/nancy-{{TASK_NAME}}-iter*.formatted.log
 wc -l {{NANCY_CURRENT_TASK_DIR}}/logs/nancy-{{TASK_NAME}}-iter*.formatted.log
 ```
 
-| Pattern | Meaning |
-|---------|---------|
-| `🔧 Edit/Write` | Writing code |
-| `🔧 Bash` | Running commands |
-| `🔧 Read` | Reading files |
-| `💬` | Worker reasoning |
-| Repeated errors | Intervene |
-| No new lines for 2+ minutes | Check if stuck |
+| Pattern                     | Meaning          |
+| --------------------------- | ---------------- |
+| `🔧 Edit/Write`             | Writing code     |
+| `🔧 Bash`                   | Running commands |
+| `🔧 Read`                   | Reading files    |
+| `💬`                        | Worker reasoning |
+| Repeated errors             | Intervene        |
+| No new lines for 2+ minutes | Check if stuck   |
 
 ## Task Directory Structure
 
@@ -111,11 +113,11 @@ nancy read <filename>       # Read message
 nancy archive <filename>    # Archive after handling
 ```
 
-| Type | Meaning | Action |
-|------|---------|--------|
-| `blocker` | Worker stuck | Intervene, may need human |
-| `progress` | Status update | Acknowledge if significant |
-| `review-request` | Work ready | Review, summarize for human |
+| Type             | Meaning       | Action                      |
+| ---------------- | ------------- | --------------------------- |
+| `blocker`        | Worker stuck  | Intervene, may need human   |
+| `progress`       | Status update | Acknowledge if significant  |
+| `review-request` | Work ready    | Review, summarize for human |
 
 ### Directives to Worker
 
@@ -130,7 +132,7 @@ Types: `guidance` (default), `directive` (specific instruction), `stop`
 **Always run git commands from the worktree directory:**
 
 ```bash
-cd {{WORKTREE_DIR}} && git log --format=full -10
+cd {{WORKTREE_DIR}} && git log --format=full -3
 cd {{WORKTREE_DIR}} && git diff main...HEAD
 ```
 
@@ -148,16 +150,16 @@ mcp__linear_server__create_issue({
   title: "Clear, actionable title",
   description: `## Overview\n...\n## Acceptance Criteria\n- [ ] ...`,
   team: "Alphabio",
-  priority: 1,  // 1=Urgent, 2=High, 3=Normal, 4=Low
+  priority: 1, // 1=Urgent, 2=High, 3=Normal, 4=Low
   parentId: "<parent-issue-id>",
-  project: "{{PROJECT_NAME}}"
-})
+  project: "{{PROJECT_NAME}}",
+});
 
 // 2. Make ready
 mcp__linear_server__update_issue({
   id: "<new-issue-id>",
-  state: "Todo"
-})
+  state: "Todo",
+});
 ```
 
 ### Status Flow
@@ -170,11 +172,13 @@ Backlog → Todo → In Progress → Worker Done → Done
 ## Token Budget
 
 Automatic thresholds (worker receives alerts):
+
 - **65%**: Warning — wrap up
 - **75%**: Critical — complete current work
 - **85%**: Danger — finish immediately
 
 Guide expectations, don't change thresholds:
+
 ```bash
 nancy direct {{TASK_NAME}} "75-80% usage acceptable for this work." --type directive
 ```
@@ -182,19 +186,23 @@ nancy direct {{TASK_NAME}} "75-80% usage acceptable for this work." --type direc
 ## Common Scenarios
 
 ### Worker Requests Review
+
 1. Archive message
-2. Check: `cd {{WORKTREE_DIR}} && git log --format=full -10`
+2. Check: `cd {{WORKTREE_DIR}} && git log --format=full -3`
 3. Summarize for human
 4. If issues: create Linear sub-issues (not quick directives)
 
 ### Worker Reports Blocker
+
 1. Read immediately
 2. Config issue → send directive; Unclear requirements → consult human
 3. Don't let worker loop — intervene within 1-2 turns
 4. Archive after handling
 
 ### Task Complete
+
 Verify:
+
 - COMPLETE file exists
 - ISSUES.md all [X]
 - No pending messages
@@ -204,14 +212,14 @@ Then summarize for human.
 
 ## Tools
 
-| Tool | Use |
-|------|-----|
-| `nancy messages/read/archive` | Worker communication |
-| `nancy direct <task> "msg"` | Send directives |
-| `nancy status` | Check all tasks (session counts are approximate) |
-| `cd {{WORKTREE_DIR}} && git log` | Worker context (always from worktree) |
-| `mcp__linear_server__*` | Issue management |
-| `gh pr view/checks` | GitHub integration |
+| Tool                             | Use                                              |
+| -------------------------------- | ------------------------------------------------ |
+| `nancy messages/read/archive`    | Worker communication                             |
+| `nancy direct <task> "msg"`      | Send directives                                  |
+| `nancy status`                   | Check all tasks (session counts are approximate) |
+| `cd {{WORKTREE_DIR}} && git log` | Worker context (always from worktree)            |
+| `mcp__linear_server__*`          | Issue management                                 |
+| `gh pr view/checks`              | GitHub integration                               |
 
 ## Best Practices
 

@@ -4,6 +4,10 @@
 **Main Session:** `{{SESSION_ID}}`
 **Iteration:** #{{ITERATION}}
 
+## 🧠 Memory Recall
+
+**At session start, call `am_query` with a summary of the parent issue.**
+
 ## Your Role
 
 You are a code review agent running AFTER the main worker completed iteration #{{ITERATION}}.
