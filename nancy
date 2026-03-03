@@ -68,6 +68,7 @@ main() {
 	direct) cmd::direct "${@:2}" ;;
 	pause) cmd::pause "${@:2}" ;;
 	unpause) cmd::unpause "${@:2}" ;;
+	stop) cmd::stop "${@:2}" ;;
 	msg) cmd::msg "${@:2}" ;;
 	inbox) cmd::inbox "${@:2}" ;;
 	messages) cmd::messages "${@:2}" ;;

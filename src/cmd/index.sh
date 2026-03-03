@@ -13,6 +13,7 @@
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/direct.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/pause.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/unpause.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cmd/stop.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/internal.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/msg.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/inbox.sh"

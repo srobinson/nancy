@@ -155,9 +155,19 @@ cli::claude::run_prompt() {
 	echo "NANCY_CURRENT_TASK_DIR: $NANCY_CURRENT_TASK_DIR"
 	echo "NANCY_TASK_DIR: $NANCY_TASK_DIR"
 
-	# Run Claude and pipe through formatter for terminal display
-	"$CLAUDE_CMD" "${args[@]}" | tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" | _claude_format_stream | fmt::strip_ansi | tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log"
+	# Track Claude PID so `nancy stop` can kill it reliably.
+	# The subshell writes $BASHPID then exec replaces itself with Claude,
+	# so the PID file contains Claude's actual process ID.
+	local pid_file="$NANCY_TASK_DIR/.worker_pid"
+
+	( echo $BASHPID > "$pid_file"; exec "$CLAUDE_CMD" "${args[@]}" ) \
+		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" \
+		| _claude_format_stream \
+		| fmt::strip_ansi \
+		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log"
 	local exit_code=${PIPESTATUS[0]}
+
+	rm -f "$pid_file"
 
 	_copy_project_session "$nancy_session_id" "$uuid"
 

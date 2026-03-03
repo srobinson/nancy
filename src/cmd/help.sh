@@ -16,6 +16,7 @@ Commands:
   start <name>    Start task execution loop
   pause <name>    Pause a running task
   unpause <name>  Resume a paused task
+  stop <name>     Stop a running task (kills worker)
   status          Show project status
   doctor          Check environment
   help            Show this help

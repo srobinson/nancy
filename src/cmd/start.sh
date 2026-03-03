@@ -9,8 +9,21 @@ _NANCY_CURRENT_TASK=""
 _start_cleanup() {
 	echo ""
 	log::warn "Interrupted. Stopping Nancy..."
-	# Stop any running watchers for the current task
 	if [[ -n "$_NANCY_CURRENT_TASK" ]]; then
+		# Kill Claude subprocess first
+		local pid_file="$NANCY_TASK_DIR/$_NANCY_CURRENT_TASK/.worker_pid"
+		if [[ -f "$pid_file" ]]; then
+			local worker_pid
+			worker_pid=$(cat "$pid_file")
+			if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+				kill "$worker_pid" 2>/dev/null || true
+				sleep 1
+				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
+			fi
+			rm -f "$pid_file"
+		fi
+		# Clean up sentinel
+		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
 		notify::stop_all_watchers "$_NANCY_CURRENT_TASK" 2>/dev/null || true
 	fi
 	exit 0
@@ -225,6 +238,15 @@ cmd::start() {
 		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" || exit_code=$?
 
 		notify::stop_token_watcher "$task"
+
+		# Check for stop sentinel (written by `nancy stop`)
+		local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
+		if [[ -f "$stop_file" ]]; then
+			log::info "Stop requested. Exiting worker loop."
+			rm -f "$stop_file"
+			notify::stop_all_watchers "$task" 2>/dev/null || true
+			return 0
+		fi
 
 		if [[ $exit_code -eq 0 ]]; then
 			ui::success "Iteration #$iteration completed"
