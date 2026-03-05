@@ -1,9 +1,12 @@
 __pycache__/
-.claude.bk/
 .claude/
+.claude.bk/
 .DS_Store
 .env.nancy
 .env.ralph
+.fmm.db
+.fmm.db-shm
+.fmm.db-wal
 *.bak
 *.log
 *.pyc

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # b_path:: src/cmd/pause.sh
-# Pause a running worker by creating a lock file and sending directive
+# Pause a running worker by creating a lock file and sending a bus message
 # ------------------------------------------------------------------------------
 
 cmd::pause() {
@@ -28,21 +28,52 @@ cmd::pause() {
 	# Create lock file
 	echo "Paused at $(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$lock_file"
 
-	# Send directive to worker to end turn cleanly
-	local filename
-	filename=$(comms::orchestrator_send "$task" "guidance" "End turn cleanly. Loop paused by orchestrator." "normal")
+	local content
+	content=$(cat <<EOF
+Nancy control message
+Task: ${task}
+Type: guidance
+Priority: normal
 
-	if [[ -n "$filename" ]]; then
+End turn cleanly. The task is paused. Finish your current checkpoint and stop after this session.
+EOF
+)
+
+	local to_agent
+	to_agent=""
+	if bus::available; then
+		to_agent=$(bus::resolve_task_worker_agent "$task")
+	fi
+	if [[ -n "$to_agent" ]]; then
+		if ! bus::send_message "$to_agent" "$content" "nancy:operator:${task}" "*" "nancy-${task}" "1" >/dev/null; then
+			rm -f "$lock_file"
+			log::error "Failed to send pause message over helioy-bus"
+			return 1
+		fi
+
 		ui::success "⏸️  Task '$task' paused"
 		ui::muted "Lock file: $lock_file"
-		ui::muted "Directive sent: $filename"
+		ui::muted "Message sent to: $to_agent"
 		echo ""
 		ui::muted "Worker will complete current turn and pause."
 		ui::muted "Use 'nancy unpause $task' to resume."
-	else
-		# Remove lock file if directive failed
-		rm -f "$lock_file"
-		log::error "Failed to send pause directive"
-		return 1
+		return 0
 	fi
+
+	local pane
+	pane=$(bus::inject_task_worker "$task" "End turn cleanly. The task is paused. Finish your current checkpoint and stop after this session.")
+	if [[ -n "$pane" ]]; then
+		log::warn "Worker not registered on helioy-bus; injected pause message directly into pane ${pane}"
+		ui::success "⏸️  Task '$task' paused"
+		ui::muted "Lock file: $lock_file"
+		ui::muted "Message injected into: $pane"
+		echo ""
+		ui::muted "Worker will complete current turn and pause."
+		ui::muted "Use 'nancy unpause $task' to resume."
+		return 0
+	fi
+
+	rm -f "$lock_file"
+	log::error "No live worker agent or pane found for task '$task'"
+	return 1
 }

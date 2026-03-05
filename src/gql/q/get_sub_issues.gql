@@ -4,14 +4,45 @@ query GetSubIssues($id: ID!) {
       parent: { id: { eq: $id } }
       state: { name: { nin: ["Cancelled", "Duplicate"] } }
     }
-    first: 100
+    first: 250
   ) {
     nodes {
       identifier
       title
       priorityLabel
+      subIssueSortOrder
       state {
         name
+      }
+      labels {
+        nodes {
+          name
+          parent {
+            name
+          }
+        }
+      }
+      children(
+        filter: { state: { name: { nin: ["Cancelled", "Duplicate"] } } }
+        first: 50
+      ) {
+        nodes {
+          identifier
+          title
+          priorityLabel
+          subIssueSortOrder
+          state {
+            name
+          }
+          labels {
+            nodes {
+              name
+              parent {
+                name
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # b_path:: src/cmd/go.sh
-# Init + orchestrate in one command
+# Init + supervised worker session in one command
 # ------------------------------------------------------------------------------
 
 cmd::go() {
@@ -32,6 +32,6 @@ cmd::go() {
 
 	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
 
-	# Orchestrate
+	# Start supervised worker session
 	cmd::orchestrate "$task"
 }

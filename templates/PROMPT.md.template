@@ -1,153 +1,102 @@
 # Authority
 
-**The Human controls this task. The orchestrator speaks for the Human. Follow directives immediately.**
+**The Human controls this task. Sidecar supervision may ask you to wrap up. Direct human guidance may arrive via helioy-bus. Follow those messages immediately.**
+
+# Hard Invariants
+
+These come from CLAUDE.md and override every other directive in this document. They are mechanically enforced. `just check` will fail and block the commit if any are violated.
+
+- **700 LOC per file.** New `.ts` files under `src/` and `tests/` must stay under. Files already over are pinned at their current size by `scripts/check-loc-limit.sh` (refactor-or-shrink, never grow).
+- **150 LOC per function.** Long functions hide duplication and kill readability. Split before modifying.
+- **DRY, no compromise.** Before writing a new function, helper, type, or constant, search for an existing one. If close, refactor to share. Never copy a block "just for this case". Never re-declare a type that already lives somewhere else. A PR that introduces duplication is not complete.
+- **Verify before done.** Run `just check && just build && just test` before every commit. Failures block the commit. Never rationalize as "pre-existing".
 
 # [{{PROJECT_IDENTIFIER}}]: {{PROJECT_TITLE}}
 
 **Session:** `{{SESSION_ID}}`
 
-## 🧠 Memory Recall
-
-**At session start, call `am_query` with a summary of the parent issue.**
-
 {{PROJECT_DESCRIPTION}}
 
 ## 0. Working Environment
 
-PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
-
-- You are working in a git worktree at: {{WORKTREE_DIR}}
+- Working directory (code): `{{WORKTREE_DIR}}`
+- Task directory (ISSUES.md, COMPLETE): `{{NANCY_CURRENT_TASK_DIR}}`
 - Branch: nancy/{{TASK_NAME}}
-- All your commits stay isolated to this worktree
 - Push with: git push -u origin nancy/{{TASK_NAME}}
 
-Use `git log --format=full -3` to understand recent changes and context from previous iterations.
-
-## 0.1 Code Navigation — Sidecar-First
-
-Source files in this project may have `.fmm` sidecar companions. For every `foo.ts` there may be a `foo.ts.fmm` containing structured metadata: exports, imports, dependencies, and line count.
-
-**MANDATORY PROTOCOL — before reading any source file:**
-
-1. CHECK if `filename.fmm` exists (Glob or direct Read)
-2. READ the sidecar — it tells you the file's exports, imports, dependencies, and size
-3. ONLY open the source file if you need to see or modify the implementation
-
-**Navigation patterns:**
-
-| Task | Do this | NOT this |
-|---|---|---|
-| Find where X is defined | `Grep "exports:.*X" **/*.fmm` | `Grep "function X" **/*.ts` |
-| Understand architecture | `Glob **/*.fmm` then read sidecars | Read random source files |
-| Find dependents of a file | `Grep "dependencies:.*filename" **/*.fmm` | Grep import statements in source |
-| Find files using package X | `Grep "imports:.*X" **/*.fmm` | Grep source for import/require |
-
-**MCP tools (when fmm server available):**
-- `fmm_lookup_export(name)` — O(1) symbol lookup
-- `fmm_dependency_graph(file)` — upstream + downstream deps
-- `fmm_search({export?, imports?, depends_on?})` — multi-criteria search
-
-**FALL BACK** to Grep/Glob on source only when searching file *contents* (not structure).
+⚠️ These are TWO distinct paths. The worktree contains your code. The task directory lives outside the worktree in the main repo's `.nancy/` folder. Always use the full absolute path when reading or editing ISSUES.md and COMPLETE.
 
 ## Collaboration Model
 
-**You are one worker in a relay team.** Tasks often span multiple sessions/iterations.
+You are one worker in a relay team. Tasks span multiple sessions. Quality over speed. Partial progress is valuable. Each commit is a handover checkpoint for the next worker, so commit messages must carry the context they will need.
 
-- **No pressure to finish everything** - quality over speed, always
-- **Handover via git commits** - Write detailed commit messages as if briefing the next developer
-- **Each commit is a checkpoint** - Future you (or another worker) will read your commits to understand context
-- **Partial progress is valuable** - Completing one issue well is better than rushing through many
+{{AGENT_ROLE_SECTION}}
 
-Your commit message format:
+## Session Continuation
+
+Check to see if previous agent left you a handover message `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md`
+
+## 1. Goal
+
+Implement all issues in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`. All acceptance criteria must pass.
+
+## 2. Quality
+
+The justfile exposes check, build, test. Do not read the justfile to verify — run the command and handle failure. Avoid using raw `cargo`, `npm`, `make`, etc.
+
+**Linear is the source of truth for progress.** If ISSUES.md drifts from Linear, trust Linear.
+
+## 3. Work Loop
+
+Work on ONE issue at a time, in list order.
+
+0. Select the first uncompleted issue from ISSUES.md
+1. `linear-server.get_issue(id: ISSUE_ID)` — read the issue. Fetch the parent separately if you need more context.
+2. `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`
+3. **Research first, then code.** Before reading source files directly, spawn an Explore subagent with a research brief that returns a bounded migration/implementation plan (see Research Discipline below). Only after the plan is in hand do you Read and Edit.
+4. Implement, test, commit
+5. Complete the issue (section 4), then repeat from step 0
+
+Only ONE issue may be "In Progress" at a time. Parallelize tool calls WITHIN an issue, not across issues.
+
+### Research Discipline
+
+Your context window is the bottleneck, not your wall clock. Reading a file puts its entire contents in context for the rest of the session; a subagent returns only the distilled answer. Delegate first, read second.
+
+## 4. Completing an Issue
+
+All steps required:
+
+1. `linear-server.save_issue(id: ISSUE_ID, state: "Worker Done")`
+2. Commit with a handover message and the `[X]` checkbox update in ISSUES.md, using this format:
+
 ```
 nancy[ISSUE_ID]: Clear summary of what was done
 
 - Detailed bullet points of changes
 - Decisions made and why
-- Known issues or next steps
-- Any context the next worker needs
+- Known issues or next steps for the next worker
 ```
 
-## 1. Goal
+⚠️ Linear state change is mandatory. Linear is the source of truth, not checkboxes.
 
-1. Implement all issues `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md` completely.
-2. All Success criteria must all pass.
+Edge cases:
+- **linear-server MCP unavailable:** send a blocker over helioy-bus, continue working on the next issue.
+- **Ending session mid-issue:** commit progress with handover notes, leave Linear state as "In Progress".
 
-## 2. Work Loop
 
-**Work on ONE issue at a time, in list order.**
+## 4. {{PROJECT_IDENTIFIER}} Completion
 
-0. Select the FIRST uncompleted issue from ISSUES.md
-1. Use linear-server - get_issue (MCP)(id: ISSUE_ID): Read the issue
-2. Use linear-server - save_issue (MCP)(id: ISSUE_ID, state: "In Progress")
-3. Implement, test, commit
-4. Complete the issue (Section 3), then repeat from step 0 if token budget allows
+Before marking the task complete, verify ALL of:
 
-IMPORTANT
-- Only ONE issue may be "In Progress" at a time
-- Parallelize tool calls WITHIN an issue (e.g. read multiple files at once), NOT across issues
-- Use your tokens wisely :> spawn subagents for work within the current issue
-
-## 3. Completing an Issue
-
-**ALL THREE steps are REQUIRED for each issue:**
-
-1. **Update Linear FIRST:** `linear-server - update_issue(id: ISSUE_ID, state: "Worker Done")`
-2. **Mark checkbox:** `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
-3. **Commit with handover:** `nancy[ISSUE_ID]: <detailed_description>`
-
-⚠️ **Linear state change is MANDATORY** - the orchestrator tracks progress via Linear, not checkboxes.
-
-If you're ending a session mid-issue:
-- Commit your progress with clear handover notes
-- Leave Linear state as "In Progress"
-- The next iteration will continue from your commits
-
-## 4. Communication
-
-If you have any questions, need more information, get stuck, report status, or to respond to the Orchestrator, use the following protocol:
-
-```bash
-nancy msg <msg_type> <message> <priority>
-
-echo "Usage: nancy msg <type> <message> <priority>"
-echo ""
-echo "Types: blocker, progress, review-request"
-echo "Priority: urgent, normal, low (default: normal)"
-
-# For example:
-nancy msg progress "Status update here"
-nancy msg blocker "Describe what's blocking you"
-nancy msg review-request "Ready for review"
-```
-
-## 5. Quality
-
-**Always use `just` commands — never raw `cargo`, `npm`, `make`, etc.**
-Use `just check` && `just build` && `just test`
-
-Always resolve all issues whether you created it or previous version of yourself ran out of context.
-
-If you catch yourself thinking "There are lint warnings but these are in the code that was already there." you are not being a good citizen. We all work for each other here.
-
-IMPORTANT
-
-Also quality:
-Linear is the source of truth. Over any Todos or any other tool.
-If Todos is out of sync trust Linear.
-
-## 6. Task Completion
-
-**Before marking the TASK complete, verify:**
-1. ✅ ALL issues in Linear are state "Worker Done"
-2. ✅ ALL checkboxes in ISSUES.md are `[X]`
-3. ✅ Inbox is empty (`nancy inbox` shows no pending directives)
+1. ✅ Every issue in Linear is "Worker Done" or "Done"
+2. ✅ Every checkbox in ISSUES.md is `[X]`
+3. ✅ No unread helioy-bus messages are blocking completion
 4. ✅ `just check && just build && just test` all pass
 
-**Only when ALL above are true:**
+Only then:
 ```bash
 echo "done" > {{NANCY_CURRENT_TASK_DIR}}/COMPLETE
 ```
 
-⚠️ NEVER mark complete with unread messages in your inbox.
-⚠️ NEVER mark complete if any Linear issue is not "Worker Done".
+⚠️ Never mark complete with unread helioy-bus messages or non-"Worker Done" Linear issues.

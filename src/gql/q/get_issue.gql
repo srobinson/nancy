@@ -8,5 +8,13 @@ query GetIssue($id: String!) {
     state {
       name
     }
+    labels {
+      nodes {
+        name
+        parent {
+          name
+        }
+      }
+    }
   }
 }

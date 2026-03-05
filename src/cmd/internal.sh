@@ -17,7 +17,7 @@ cmd::_worker() {
 	cmd::start "$task"
 }
 
-# Orchestrator pane - interactive CLI with orchestrator context
+# Legacy orchestrator pane - retained for manual debugging only
 cmd::_orchestrator() {
 	local task="$1"
 
@@ -68,7 +68,7 @@ cmd::_orchestrator() {
 	cli::run_interactive "$prompt"
 }
 
-# Sidebar navigation - persistent menu with mouse support
+# Legacy sidebar navigation - retained for manual debugging only
 cmd::_sidebar() {
 	local task="$1"
 	local win="nancy-${task}"
@@ -112,21 +112,59 @@ Inbox"
 		case "$selected" in
 		"Worker")
 			tmux select-pane -t "$main_pane" -T "⚙️ Worker: ${task}"
-			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _worker '$task'; echo '[Press Enter to exit]'; read" C-m
+			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _worker '$task'" C-m
 			;;
 		"Orchestrator")
 			tmux select-pane -t "$main_pane" -T "🎛️ Orchestrator"
-			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _orchestrator '$task'; echo '[Press Enter to exit]'; read" C-m
+			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _orchestrator '$task'" C-m
 			;;
 		"Inbox")
 			tmux select-pane -t "$main_pane" -T "📬 Inbox"
-			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _logs '$task'; echo '[Press Enter to exit]'; read" C-m
+			tmux send-keys -t "$main_pane" "cd '$NANCY_PROJECT_ROOT' && '$NANCY_FRAMEWORK_ROOT/nancy' _logs '$task'" C-m
 			;;
 		esac
 
 		# Focus main pane after selection
 		tmux select-pane -t "$main_pane"
 	done
+}
+
+# Monitor pane - follows worker and sidecar logs
+cmd::_monitor() {
+	local task="$1"
+
+	if [[ -z "$task" ]]; then
+		log::error "Usage: nancy _monitor <task>"
+		return 1
+	fi
+
+	if ! task::exists "$task"; then
+		log::error "Task '$task' not found"
+		return 1
+	fi
+
+	local task_dir="${NANCY_TASK_DIR}/${task}"
+	local sidecar_log="${task_dir}/logs/sidecar.log"
+	local runtime_log="${task_dir}/logs/sidecar-runtime.log"
+
+	mkdir -p "${task_dir}/logs"
+	touch "$sidecar_log" "$runtime_log"
+
+	ui::header "📡 Monitor - $task"
+	ui::muted "Following sidecar lifecycle and runtime logs"
+	echo "---"
+
+	tail -F "$sidecar_log" "$runtime_log"
+}
+
+# Detached sidecar session - observes worker pane and handles eviction
+cmd::_sidecar() {
+	local task="$1"
+	local uuid="$2"
+	local worker_pane="$3"
+	local worktree_dir="$4"
+
+	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir"
 }
 
 # Inbox pane - watch for bidirectional messages

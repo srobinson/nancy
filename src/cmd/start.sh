@@ -5,11 +5,14 @@
 
 # Global for cleanup handler access
 _NANCY_CURRENT_TASK=""
+_NANCY_CURRENT_SIDECAR_SESSION=""
 
 _start_cleanup() {
 	echo ""
 	log::warn "Interrupted. Stopping Nancy..."
 	if [[ -n "$_NANCY_CURRENT_TASK" ]]; then
+		sidecar::stop "$_NANCY_CURRENT_TASK" "$_NANCY_CURRENT_SIDECAR_SESSION" 2>/dev/null || true
+		_NANCY_CURRENT_SIDECAR_SESSION=""
 		# Kill Claude subprocess first
 		local pid_file="$NANCY_TASK_DIR/$_NANCY_CURRENT_TASK/.worker_pid"
 		if [[ -f "$pid_file" ]]; then
@@ -23,13 +26,6 @@ _start_cleanup() {
 				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
 			fi
 			rm -f "$pid_file"
-		fi
-		# Kill any remaining pipeline processes (tee, jq) that
-		# may linger after Claude exits. jobs -p lists background PIDs.
-		local remaining_pids
-		remaining_pids=$(jobs -p 2>/dev/null)
-		if [[ -n "$remaining_pids" ]]; then
-			kill $remaining_pids 2>/dev/null || true
 		fi
 		# Clean up sentinel
 		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
@@ -85,17 +81,52 @@ _start_create_issues_file() {
 EOF
 
 	{
-		echo -e " \tISSUE_ID\tTitle\tPriority\tState"
-		echo "$sub_issues" | jq -r '.data.issues.nodes | reverse |
-			.[] |
-			[
-				(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
-				.identifier,
-				.title,
-				.priorityLabel // "-",
-				.state.name
-			] | @tsv'
+		echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags"
+		echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
+			(. as $p |
+				[
+					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
+					$p.identifier,
+					$p.title,
+					($p.priorityLabel // "-"),
+					$p.state.name,
+					([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
+				],
+				(
+					$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
+					[
+						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
+						("  ↳ " + .identifier),
+						.title,
+						(.priorityLabel // "-"),
+						.state.name,
+						([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
+					]
+				)
+			) | @tsv'
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
+
+	# Extract agent role from first uncompleted issue (parent or child)
+	# Walks sorted issues in order, finds first with incomplete state, returns its Agent Role label
+	_NEXT_AGENT_ROLE=$(echo "$sub_issues" | jq -r '
+		[.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
+			(. as $p |
+				if ($p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress") then
+					([$p.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
+				else
+					empty
+				end
+			),
+			(
+				.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
+				if (.state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress") then
+					([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
+				else
+					empty
+				end
+			)
+		] | .[0] // ""
+	')
 }
 
 # Helper: Setup git worktree
@@ -114,15 +145,39 @@ _start_setup_worktree() {
 		# git rebase origin/main || log::fatal "Failed to rebase main repository"
 		git worktree add "$worktree_dir" -b "nancy/$task" 2>/dev/null ||
 			git worktree add "$worktree_dir" "nancy/$task"
+
+		# copy .env && .env.* to worktree for environment variable access (e.g. API keys)
+		shopt -s nullglob
+		for env_file in "$main_repo_dir"/.env*; do
+			cp -f "$env_file" "$worktree_dir/"
+		done
+		shopt -u nullglob
+
+		# safe copy .fmm.db to worktree for database access
+		if [ -f "$main_repo_dir/.fmm.db" ]; then
+			cp -f "$main_repo_dir/.fmm.db" "$worktree_dir/"
+		fi
+
+	else
+		log::info "Worktree already exists: $worktree_dir"
 	fi
+
+	_worktree_info[dir]="$worktree_dir"
+	_worktree_info[main_repo]="$main_repo_dir"
 
 	cd "$worktree_dir" || {
 		log::error "Failed to cd into worktree"
 		return 1
 	}
 
-	_worktree_info[dir]="$worktree_dir"
-	_worktree_info[main_repo]="$main_repo_dir"
+	# Install dependencies if missing. Worktrees share git objects but not
+	# node_modules, so the worker cannot typecheck without an install step.
+	if [[ ! -d "$worktree_dir/node_modules" ]]; then
+		if just --list 2>/dev/null | grep -q '^\s*install\b'; then
+			log::info "Installing dependencies in worktree..."
+			just install || log::warn "Dependency install failed (non-fatal)"
+		fi
+	fi
 
 	log::info "Working in worktree: $(pwd)"
 }
@@ -140,6 +195,7 @@ _start_run_review_agent() {
 	local review_session_id="${session_id}-review"
 	local review_session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}-review.md"
 	local review_prompt_file="${NANCY_FRAMEWORK_ROOT}/templates/REVIEW.md.template"
+	local review_prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.review.md"
 
 	log::info "🔍 Running Code Review Agent..."
 
@@ -160,12 +216,19 @@ _start_run_review_agent() {
 	review_prompt="${review_prompt//\{\{WORKTREE_DIR\}\}/$worktree_dir}"
 	review_prompt="${review_prompt//\{\{GIT_LOG\}\}/$git_log}"
 
+	# Append project-local review prompt if present
+	if [[ -f "$review_prompt_file_local" ]]; then
+		log::info "Appending local review prompt: $review_prompt_file_local"
+		review_prompt+=$'\n\n'
+		review_prompt+=$(cat "$review_prompt_file_local")
+	fi
+
 	# Save rendered prompt
 	echo "$review_prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.review.md"
 
 	# Run review agent
 	local exit_code=0
-	cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" || exit_code=$?
+	CLAUDE_CONFIG_DIR=/Users/alphab/.claude.nancy cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"
@@ -185,20 +248,17 @@ cmd::start() {
 		return 1
 	fi
 
+	# Store task globally for cleanup
+	_NANCY_CURRENT_TASK="$task"
+	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
+
 	# Fetch Linear context
 	declare -A project
 	_start_fetch_linear_context "$task" project || return 1
 
-	# Create ISSUES.md
-	_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
-
 	# Setup worktree
 	declare -A worktree
 	_start_setup_worktree "$task" worktree || return 1
-
-	# Store task globally for cleanup
-	_NANCY_CURRENT_TASK="$task"
-	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
 
 	# Setup signal handler
 	trap _start_cleanup SIGINT SIGTERM
@@ -213,6 +273,15 @@ cmd::start() {
 	local iteration=$(task::count_sessions "$task")
 
 	while :; do
+
+		# Create ISSUES.md and detect agent role from first uncompleted issue
+		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
+		local agent_role="${_NEXT_AGENT_ROLE:-}"
+
+		if [[ -n "$agent_role" ]]; then
+			log::info "Agent role: helioy-tools:${agent_role}"
+		fi
+
 		iteration=$((iteration + 1))
 		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 		local session_id=$(session::id "$task" "$iteration")
@@ -227,6 +296,21 @@ cmd::start() {
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
 
+		# Build agent role section (empty if no role specified)
+		local agent_role_section=""
+		if [[ -n "$agent_role" ]]; then
+			agent_role_section="## Agent Role Constraint
+
+You are a **\`${agent_role}\`** specialist. Other specialists work in parallel on their own issues. The Tags column in ISSUES.md identifies each issue's owner.
+
+1. Work issues in ISSUES.md order. Never skip ahead.
+2. Only work on issues tagged \`${agent_role}\`. When the next issue in sequence is not yours, your turn is over.
+3. Unauthorized edits are auto-reverted by the quality gate.
+
+When you reach an issue owned by another specialist: commit your progress with a handover message, send a handoff update over helioy-bus, and end your session immediately. Do NOT write COMPLETE, perform memory updates, or do cleanup. Your final message must be the handoff summary.
+"
+		fi
+
 		# Render main prompt (direct substitution matching orchestrator pattern)
 		local prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
 		prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
@@ -235,18 +319,56 @@ cmd::start() {
 		prompt="${prompt//\{\{TASK_NAME\}\}/$task}"
 		prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/${project[identifier]}}"
 		prompt="${prompt//\{\{PROJECT_TITLE\}\}/${project[title]}}"
-		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/${project[description]}}"
+		local safe_description="${project[description]//&/\\&}"
+		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
 		prompt="${prompt//\{\{WORKTREE_DIR\}\}/${worktree[dir]}}"
+		prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
+
+		# Append project-local prompt if present (e.g. project-specific rules)
+		local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
+		if [[ -f "$prompt_file_local" ]]; then
+			log::info "Appending local prompt: $prompt_file_local"
+			prompt+=$'\n\n'
+			prompt+=$(cat "$prompt_file_local")
+		fi
 
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
 
-		notify::watch_tokens_bg "$task" "$iteration"
+		local uuid
+		uuid=$(uuid::generate)
+		local sidecar_log="$NANCY_CURRENT_TASK_DIR/logs/sidecar.log"
+		mkdir -p "$(dirname "$sidecar_log")"
+		echo "[$(date -Iseconds)] preparing sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$uuid" >>"$sidecar_log"
+
+		local worker_pane=""
+		local sidecar_active=0
+		local sidecar_session=""
+		if [[ -n "${TMUX:-}" ]] && sidecar::enabled; then
+			worker_pane="${TMUX_PANE:-}"
+			if [[ -z "$worker_pane" ]]; then
+				worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
+			fi
+			echo "[$(date -Iseconds)] sidecar candidate pane: ${worker_pane:-<empty>}" >>"$sidecar_log"
+			if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "${worktree[dir]}" >>"$sidecar_log" 2>&1; then
+				sidecar_active=1
+				sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
+				_NANCY_CURRENT_SIDECAR_SESSION="$sidecar_session"
+				echo "[$(date -Iseconds)] sidecar spawn invoked: ${sidecar_session:-<unknown>}" >>"$sidecar_log"
+			else
+				echo "[$(date -Iseconds)] sidecar spawn failed" >>"$sidecar_log"
+			fi
+		else
+			echo "[$(date -Iseconds)] sidecar skipped" >>"$sidecar_log"
+		fi
 
 		local exit_code=0
-		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" || exit_code=$?
+		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$agent_role" "$uuid" || exit_code=$?
 
-		notify::stop_token_watcher "$task"
+		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
+		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
+			_NANCY_CURRENT_SIDECAR_SESSION=""
+		fi
 
 		# Check for stop sentinel (written by `nancy stop`)
 		local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"

@@ -28,10 +28,11 @@ export NANCY_CURRENT_TASK_DIR
 # ------------------------------------------------------------------------------
 
 export NANCY_CODE_REVIEW_AGENT_ENABLED=true
+export NANCY_SIDECAR_MODE="${NANCY_SIDECAR_MODE:-1}"
 
 # ------------------------------------------------------------------------------
 
-# export CLAUDE_CODE_SUBAGENT_MODEL="opus"
+export CLAUDE_CODE_SUBAGENT_MODEL="opus"
 
 # ------------------------------------------------------------------------------
 
@@ -41,8 +42,10 @@ export NANCY_CODE_REVIEW_AGENT_ENABLED=true
 . "$NANCY_FRAMEWORK_ROOT/src/config/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cli/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/task/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/bus/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/comms/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/notify/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/sidecar/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/linear/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/nav/index.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cmd/index.sh"
@@ -73,13 +76,16 @@ main() {
 	inbox) cmd::inbox "${@:2}" ;;
 	messages) cmd::messages "${@:2}" ;;
 	read) cmd::read_msg "${@:2}" ;;
+	ack) cmd::archive "${@:2}" ;;
 	archive) cmd::archive "${@:2}" ;;
 	notify-test) cmd::notify_test "${@:2}" ;;
 	# Internal commands (used by orchestration panes)
 	_worker) cmd::_worker "${@:2}" ;;
 	_orchestrator) cmd::_orchestrator "${@:2}" ;;
 	_logs) cmd::_logs "${@:2}" ;;
+	_monitor) cmd::_monitor "${@:2}" ;;
 	_sidebar) cmd::_sidebar "${@:2}" ;;
+	_sidecar) cmd::_sidecar "${@:2}" ;;
 	_nav) nav::show_menu "${@:2}" ;;
 	help | --help | -h) cmd::help ;;
 	version | --version | -v) cmd::version ;;
