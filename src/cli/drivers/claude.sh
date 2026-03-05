@@ -117,6 +117,7 @@ cli::claude::run_interactive() {
 
 	# Use --session-id with UUID
 	args+=("--session-id" "$uuid")
+	args+=("--agent" "helioy-tools:research-synthesizer")
 
 	"$CLAUDE_CMD" "${args[@]}" "$prompt"
 }
@@ -127,6 +128,7 @@ cli::claude::run_prompt() {
 	local nancy_session_id="$2"
 	local export_file="$3"
 	local NANCY_TASK_DIR="$4"
+	local agent_role="${5:-}"
 	local model="${NANCY_MODEL:-}"
 
 	local uuid
@@ -135,6 +137,10 @@ cli::claude::run_prompt() {
 	local args=("--dangerously-skip-permissions")
 
 	args+=("--session-id" "$uuid")
+
+	if [[ -n "$agent_role" ]]; then
+		args+=("--agent" "helioy-tools:${agent_role}")
+	fi
 
 	if [[ -n "$model" ]]; then
 		args+=("--model" "$model")
@@ -165,11 +171,14 @@ cli::claude::run_prompt() {
 	# completes, but Claude catches SIGINT internally (to cancel tool
 	# execution, not to exit) — deadlocking the script on Ctrl+C.
 	set -o pipefail
-	( echo $BASHPID > "$pid_file"; exec "$CLAUDE_CMD" "${args[@]}" ) \
-		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" \
-		| _claude_format_stream \
-		| fmt::strip_ansi \
-		| tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log" &
+	(
+		echo $BASHPID >"$pid_file"
+		exec "$CLAUDE_CMD" "${args[@]}"
+	) |
+		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" |
+		_claude_format_stream |
+		fmt::strip_ansi |
+		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log" &
 	local pipeline_pid=$!
 
 	# wait is interruptible by signals, so the SIGINT trap in start.sh

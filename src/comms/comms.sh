@@ -165,6 +165,33 @@ comms::archive() {
 	fi
 }
 
+# Archive all pending messages for a role
+# Usage: comms::archive_all <task> <role>
+comms::archive_all() {
+	local task="$1"
+	local role="$2"
+
+	local inbox_dir
+	inbox_dir=$(comms::get_dir "$task" "$role" "inbox")
+
+	[[ ! -d "$inbox_dir" ]] && return 0
+
+	local files
+	files=$(find "$inbox_dir" -maxdepth 1 -name "*.md" -type f 2>/dev/null)
+	[[ -z "$files" ]] && return 0
+
+	local count=0
+	while IFS= read -r filepath; do
+		local filename
+		filename=$(basename "$filepath")
+		comms::archive "$task" "$role" "$filename" && count=$((count + 1))
+	done <<<"$files"
+
+	if [[ $count -gt 0 ]]; then
+		log::info "Archived $count stale message(s) from $role inbox"
+	fi
+}
+
 # Check if a role has pending messages
 # Usage: comms::has_messages <task> <role>
 # Returns: 0 if messages exist, 1 if empty

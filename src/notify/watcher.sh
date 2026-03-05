@@ -453,10 +453,10 @@ notify::_get_threshold_message() {
 		echo "👋 Hi! You've used ${percent}% of your context. Keep on trucking!"
 		;;
 	warning)
-		echo "Token usage at ${percent}% of context limit. Start thinking about wrapping up your current work and preparing to hand off or complete the task."
+		echo "Token usage at ${percent}% of context limit. Start thinking about wrapping up your current work and preparing to hand off."
 		;;
 	critical)
-		echo "CRITICAL: Token usage at ${percent}% of context limit. You MUST start winding down your work now. Complete current task and prepare to stop."
+		echo "CRITICAL: Token usage at ${percent}% of context limit. You MUST start winding down your work now. You can leave uncommitted work. The next agent will pick up from where you left off."
 		;;
 	danger)
 		echo "DANGER: Token usage at ${percent}% of context limit. You MUST STOP immediately. No further work can be done without losing critical context."

@@ -39,6 +39,12 @@ You are a code review agent running AFTER the main worker completed iteration #{
 {{GIT_LOG}}
 ```
 
+## 0.1 Code Navigation — fmm MCP Tools
+
+If `.fmm.db` exists in the project root, fmm MCP tools are available. **Use them for all code navigation — they replace Grep/Read for structural queries.**
+
+Only fall back to Search/Grep/Read as a last resort.
+
 ## Review Process
 
 1. **Understand what changed**

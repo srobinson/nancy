@@ -6,17 +6,22 @@
 #
 # nancy exits non-zero when no task is active — allow operation immediately.
 
+# if we are not in a git worktree, we are not "in" nancy, so we can skip checks
+if ! git rev-parse --git-dir >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	exit 0
+fi
+
 has_pending() {
-    local output
-    output=$("$@" 2>&1) || return 1
-    # nancy succeeded and returned output — check it's not empty/whitespace
-    [[ -n "${output// /}" ]]
+	local output
+	output=$("$@" 2>&1) || return 1
+	# nancy succeeded and returned output — check it's not empty/whitespace
+	[[ -n "${output// /}" ]]
 }
 
 if [ -f .git ]; then
-    # WORKER: Check for orchestrator directives
-    if has_pending nancy inbox; then
-        cat <<'EOF'
+	# WORKER: Check for orchestrator directives
+	if has_pending nancy inbox; then
+		cat <<'EOF'
 {
   "continue": false,
   "hookSpecificOutput": {
@@ -26,12 +31,12 @@ if [ -f .git ]; then
   }
 }
 EOF
-        exit 0
-    fi
+		exit 0
+	fi
 elif [ -d .git ]; then
-    # ORCHESTRATOR: Check for worker messages
-    if has_pending nancy messages; then
-        cat <<'EOF'
+	# ORCHESTRATOR: Check for worker messages
+	if has_pending nancy messages; then
+		cat <<'EOF'
 {
   "continue": false,
   "hookSpecificOutput": {
@@ -41,8 +46,8 @@ elif [ -d .git ]; then
   }
 }
 EOF
-        exit 0
-    fi
+		exit 0
+	fi
 fi
 
 # No active task or no pending messages — allow operation

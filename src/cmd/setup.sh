@@ -8,7 +8,7 @@
 # Copilot: claude-sonnet-4, gpt-4o, etc.
 declare -A NANCY_DEFAULTS_MODEL=(
 	[copilot]="claude-opus-4"
-	[claude]="opus"
+	[claude]="sonnet"
 	[opencode]="opus"
 	[gemini]="gemini-3.0-flash"
 )
@@ -63,7 +63,7 @@ cmd::setup() {
 	fi
 
 	# Get defaults for selected CLI
-	local default_model="${NANCY_DEFAULTS_MODEL[$selected_cli]:-claude-sonnet-4}"
+	local default_model="${NANCY_DEFAULTS_MODEL[$selected_cli]:-opus}"
 	local default_threshold="${NANCY_DEFAULTS_THRESHOLD[$selected_cli]:-0.20}"
 
 	# Create .nancy directory

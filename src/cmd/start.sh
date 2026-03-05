@@ -85,17 +85,52 @@ _start_create_issues_file() {
 EOF
 
 	{
-		echo -e " \tISSUE_ID\tTitle\tPriority\tState"
-		echo "$sub_issues" | jq -r '.data.issues.nodes | reverse |
-			.[] |
-			[
-				(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
-				.identifier,
-				.title,
-				.priorityLabel // "-",
-				.state.name
-			] | @tsv'
+		echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags"
+		echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
+			(. as $p |
+				[
+					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
+					$p.identifier,
+					$p.title,
+					($p.priorityLabel // "-"),
+					$p.state.name,
+					([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
+				],
+				(
+					$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
+					[
+						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
+						("  ↳ " + .identifier),
+						.title,
+						(.priorityLabel // "-"),
+						.state.name,
+						([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
+					]
+				)
+			) | @tsv'
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
+
+	# Extract agent role from first uncompleted issue (parent or child)
+	# Walks sorted issues in order, finds first with incomplete state, returns its Agent Role label
+	_NEXT_AGENT_ROLE=$(echo "$sub_issues" | jq -r '
+		[.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
+			(. as $p |
+				if ($p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress") then
+					([$p.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
+				else
+					empty
+				end
+			),
+			(
+				.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
+				if (.state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress") then
+					([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
+				else
+					empty
+				end
+			)
+		] | .[0] // ""
+	')
 }
 
 # Helper: Setup git worktree
@@ -114,15 +149,39 @@ _start_setup_worktree() {
 		# git rebase origin/main || log::fatal "Failed to rebase main repository"
 		git worktree add "$worktree_dir" -b "nancy/$task" 2>/dev/null ||
 			git worktree add "$worktree_dir" "nancy/$task"
+
+		# copy .env && .env.* to worktree for environment variable access (e.g. API keys)
+		shopt -s nullglob
+		for env_file in "$main_repo_dir"/.env*; do
+			cp -f "$env_file" "$worktree_dir/"
+		done
+		shopt -u nullglob
+
+		# safe copy .fmm.db to worktree for database access
+		if [ -f "$main_repo_dir/.fmm.db" ]; then
+			cp -f "$main_repo_dir/.fmm.db" "$worktree_dir/"
+		fi
+
+	else
+		log::info "Worktree already exists: $worktree_dir"
 	fi
+
+	_worktree_info[dir]="$worktree_dir"
+	_worktree_info[main_repo]="$main_repo_dir"
 
 	cd "$worktree_dir" || {
 		log::error "Failed to cd into worktree"
 		return 1
 	}
 
-	_worktree_info[dir]="$worktree_dir"
-	_worktree_info[main_repo]="$main_repo_dir"
+	# Install dependencies if missing. Worktrees share git objects but not
+	# node_modules, so the worker cannot typecheck without an install step.
+	if [[ ! -d "$worktree_dir/node_modules" ]]; then
+		if just --list 2>/dev/null | grep -q '^\s*install\b'; then
+			log::info "Installing dependencies in worktree..."
+			just install || log::warn "Dependency install failed (non-fatal)"
+		fi
+	fi
 
 	log::info "Working in worktree: $(pwd)"
 }
@@ -140,6 +199,7 @@ _start_run_review_agent() {
 	local review_session_id="${session_id}-review"
 	local review_session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}-review.md"
 	local review_prompt_file="${NANCY_FRAMEWORK_ROOT}/templates/REVIEW.md.template"
+	local review_prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.review.md"
 
 	log::info "🔍 Running Code Review Agent..."
 
@@ -160,12 +220,19 @@ _start_run_review_agent() {
 	review_prompt="${review_prompt//\{\{WORKTREE_DIR\}\}/$worktree_dir}"
 	review_prompt="${review_prompt//\{\{GIT_LOG\}\}/$git_log}"
 
+	# Append project-local review prompt if present
+	if [[ -f "$review_prompt_file_local" ]]; then
+		log::info "Appending local review prompt: $review_prompt_file_local"
+		review_prompt+=$'\n\n'
+		review_prompt+=$(cat "$review_prompt_file_local")
+	fi
+
 	# Save rendered prompt
 	echo "$review_prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.review.md"
 
 	# Run review agent
 	local exit_code=0
-	cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" || exit_code=$?
+	cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"
@@ -185,20 +252,17 @@ cmd::start() {
 		return 1
 	fi
 
+	# Store task globally for cleanup
+	_NANCY_CURRENT_TASK="$task"
+	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
+
 	# Fetch Linear context
 	declare -A project
 	_start_fetch_linear_context "$task" project || return 1
 
-	# Create ISSUES.md
-	_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
-
 	# Setup worktree
 	declare -A worktree
 	_start_setup_worktree "$task" worktree || return 1
-
-	# Store task globally for cleanup
-	_NANCY_CURRENT_TASK="$task"
-	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
 
 	# Setup signal handler
 	trap _start_cleanup SIGINT SIGTERM
@@ -213,6 +277,20 @@ cmd::start() {
 	local iteration=$(task::count_sessions "$task")
 
 	while :; do
+
+		# Create ISSUES.md and detect agent role from first uncompleted issue
+		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
+		local agent_role="${_NEXT_AGENT_ROLE:-}"
+
+		if [[ -n "$agent_role" ]]; then
+			log::info "Agent role: helioy-tools:${agent_role}"
+		fi
+
+		# Archive stale directives from previous iterations so the
+		# incoming worker session starts with an empty inbox.
+		comms::archive_all "$task" "worker"
+		comms::archive_all "$task" "orchestrator"
+
 		iteration=$((iteration + 1))
 		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 		local session_id=$(session::id "$task" "$iteration")
@@ -227,6 +305,27 @@ cmd::start() {
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
 
+		# Build agent role section (empty if no role specified)
+		local agent_role_section=""
+		if [[ -n "$agent_role" ]]; then
+			agent_role_section="## Agent Role Constraint
+
+You have been assigned this task because you are a **\`${agent_role}\`** specialist. Other specialists are working in parallel on their own issues. The Tags column in ISSUES.md identifies which specialist owns each issue.
+
+### Rules
+
+1. **Sequence is critical.** Work on issues in the order they appear in ISSUES.md. Never skip ahead.
+2. **Only work on issues tagged \`${agent_role}\`.** When the next issue in sequence is not tagged \`${agent_role}\`, you have reached the end of your current work. Write a handover commit and end your turn.
+3. **The quality gate will discard unauthorized work.** Any changes to issues owned by another specialist will be automatically reverted. Do not attempt them.
+
+When you reach an issue that belongs to another specialist:
+1. Commit your progress with a detailed handover message
+2. Send a progress message: \`nancy msg progress \"Completed [issues]. Next issue [ID] is owned by [role]. Handing off.\"\`
+3. **End your session immediately.** Do NOT write to the COMPLETE file. Do NOT perform memory updates, cleanup, or any other work. Your final message must be your handoff summary.
+
+The orchestrator will reassign you when your next issue is unblocked."
+		fi
+
 		# Render main prompt (direct substitution matching orchestrator pattern)
 		local prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
 		prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
@@ -235,8 +334,18 @@ cmd::start() {
 		prompt="${prompt//\{\{TASK_NAME\}\}/$task}"
 		prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/${project[identifier]}}"
 		prompt="${prompt//\{\{PROJECT_TITLE\}\}/${project[title]}}"
-		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/${project[description]}}"
+		local safe_description="${project[description]//&/\\&}"
+		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
 		prompt="${prompt//\{\{WORKTREE_DIR\}\}/${worktree[dir]}}"
+		prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
+
+		# Append project-local prompt if present (e.g. project-specific rules)
+		local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
+		if [[ -f "$prompt_file_local" ]]; then
+			log::info "Appending local prompt: $prompt_file_local"
+			prompt+=$'\n\n'
+			prompt+=$(cat "$prompt_file_local")
+		fi
 
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
@@ -244,7 +353,7 @@ cmd::start() {
 		notify::watch_tokens_bg "$task" "$iteration"
 
 		local exit_code=0
-		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" || exit_code=$?
+		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$agent_role" || exit_code=$?
 
 		notify::stop_token_watcher "$task"
 
@@ -261,6 +370,9 @@ cmd::start() {
 			ui::success "Iteration #$iteration completed"
 
 			# Run code review agent if enabled
+			# Archive worker directives before review so the review agent
+			# does not inherit stale guidance meant for the build agent.
+			comms::archive_all "$task" "worker"
 			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]; then
 				_start_run_review_agent "$task" "$session_id" "$iteration" \
 					"${project[identifier]}" "${project[title]}" "${worktree[dir]}"
@@ -299,6 +411,9 @@ cmd::start() {
 
 		echo ""
 		log::info "Starting next iteration in 2s..."
+		# Archive any remaining worker messages before next iteration
+		comms::archive_all "$task" "worker"
+		comms::archive_all "$task" "orchestrator"
 		sleep 2
 	done
 }

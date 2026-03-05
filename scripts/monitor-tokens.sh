@@ -62,7 +62,7 @@ while true; do
 		# Check 60% threshold (must wind down)
 		if (($(echo "$PERCENT >= 60" | bc -l))) && [ "$NOTIFIED_60" = false ]; then
 			echo "⚠️  60% threshold reached - sending wind down directive"
-			nancy direct "$TASK_ID" "CRITICAL: Token budget at ${PERCENT}%. You MUST start winding down your work now. Complete current task and prepare to stop." --type directive
+			nancy direct "$TASK_ID" "CRITICAL: Token budget at ${PERCENT}%. You can leave uncommitted work. The next agent will pick up from where you left off." --type directive
 			NOTIFIED_60=true
 		# Check 50% threshold (warning)
 		elif (($(echo "$PERCENT >= 50" | bc -l))) && [ "$NOTIFIED_50" = false ]; then
