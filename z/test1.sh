@@ -10,7 +10,7 @@ export NANCY_FRAMEWORK_ROOT="$(pwd)"
 
 # ------------------------------------------------------------------------------
 
-id="ALP-180"
+id="ALP-885"
 
 # linear::issue:comment:add "$id" "This is a test comment from Nancy CLI." >/dev/null
 
@@ -43,17 +43,27 @@ EOF
 # Append formatted table
 {
 	echo -e " \tISSUE_ID\tTitle\tPriority\tState"
-	echo "$sub_issues" | jq -r '.data.issues.nodes | reverse |
-  .[] |
-     [
-            (if .state.name == "Backlog" or .state.name == "In
-  Progress" then "[ ]" else "[X]" end),
-            .identifier,
-            .title,
-            .priorityLabel // "-",
-            .state.name
-        ] | @tsv'
-} | column -t -s $'\t' >>"ISSUES.md"
+		echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.sortOrder) | reverse | .[] |
+			(. as $p |
+				[
+					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
+					$p.identifier,
+					$p.title,
+					($p.priorityLabel // "-"),
+					$p.state.name
+				],
+				(
+					$p.children.nodes | sort_by(.identifier) | .[]? |
+					[
+						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
+						("  ↳ " + .identifier),
+						.title,
+						(.priorityLabel // "-"),
+						.state.name
+					]
+				)
+			) | @tsv'
+	} | column -t -s $'\t' >>"ISSUES.md"
 
 # echo "Issue ID: $id"
 # echo "Title: $title"

@@ -23,31 +23,23 @@ PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
 
 Use `git log --format=full -3` to understand recent changes and context from previous iterations.
 
-## 0.1 Code Navigation — Sidecar-First
+## 0.1 Code Navigation — fmm MCP Tools
 
-Source files in this project may have `.fmm` sidecar companions. For every `foo.ts` there may be a `foo.ts.fmm` containing structured metadata: exports, imports, dependencies, and line count.
+If `.fmmrc.json` exists in the project root, fmm MCP tools are available. **Use them for all code navigation — they replace Grep/Read for structural queries.**
 
-**MANDATORY PROTOCOL — before reading any source file:**
+| Tool | Use case |
+|------|----------|
+| `fmm_read_symbol(name)` | Read source for a specific symbol — one call, exact lines, follows re-exports. Use `ClassName.method` for public methods |
+| `fmm_lookup_export(name)` | Where is X defined? O(1) lookup → file + line range |
+| `fmm_file_outline(file)` | All exports in a file with line ranges — read this before opening source |
+| `fmm_list_files(path)` | All indexed files under a directory — start here when exploring a module |
+| `fmm_list_exports(pattern)` | Fuzzy search across all exports |
+| `fmm_dependency_graph(file)` | local_deps (resolved imports), external (packages), downstream (blast radius) |
+| `fmm_file_info(file)` | Exports/imports/LOC summary without reading source |
+| `fmm_search(...)` | Multi-criteria queries with relevance ranking |
+| `fmm_glossary(pattern)` | Symbol-level blast radius — all definitions of X + exact files that import each one |
 
-1. CHECK if `filename.fmm` exists (Glob or direct Read)
-2. READ the sidecar — it tells you the file's exports, imports, dependencies, and size
-3. ONLY open the source file if you need to see or modify the implementation
-
-**Navigation patterns:**
-
-| Task | Do this | NOT this |
-|---|---|---|
-| Find where X is defined | `Grep "exports:.*X" **/*.fmm` | `Grep "function X" **/*.ts` |
-| Understand architecture | `Glob **/*.fmm` then read sidecars | Read random source files |
-| Find dependents of a file | `Grep "dependencies:.*filename" **/*.fmm` | Grep import statements in source |
-| Find files using package X | `Grep "imports:.*X" **/*.fmm` | Grep source for import/require |
-
-**MCP tools (when fmm server available):**
-- `fmm_lookup_export(name)` — O(1) symbol lookup
-- `fmm_dependency_graph(file)` — upstream + downstream deps
-- `fmm_search({export?, imports?, depends_on?})` — multi-criteria search
-
-**FALL BACK** to Grep/Glob on source only when searching file *contents* (not structure).
+Only fall back to Grep/Read when searching inside function bodies or reading non-exported code.
 
 ## Collaboration Model
 

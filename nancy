@@ -73,6 +73,7 @@ main() {
 	inbox) cmd::inbox "${@:2}" ;;
 	messages) cmd::messages "${@:2}" ;;
 	read) cmd::read_msg "${@:2}" ;;
+	ack) cmd::archive "${@:2}" ;;
 	archive) cmd::archive "${@:2}" ;;
 	notify-test) cmd::notify_test "${@:2}" ;;
 	# Internal commands (used by orchestration panes)

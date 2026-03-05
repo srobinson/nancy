@@ -8,7 +8,7 @@
 # Copilot: claude-sonnet-4, gpt-4o, etc.
 declare -A NANCY_DEFAULTS_MODEL=(
 	[copilot]="claude-opus-4"
-	[claude]="opus"
+	[claude]="sonnet"
 	[opencode]="opus"
 	[gemini]="gemini-3.0-flash"
 )

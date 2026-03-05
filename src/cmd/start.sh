@@ -86,15 +86,26 @@ EOF
 
 	{
 		echo -e " \tISSUE_ID\tTitle\tPriority\tState"
-		echo "$sub_issues" | jq -r '.data.issues.nodes | reverse |
-			.[] |
-			[
-				(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
-				.identifier,
-				.title,
-				.priorityLabel // "-",
-				.state.name
-			] | @tsv'
+		echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.sortOrder) | reverse | .[] |
+			(. as $p |
+				[
+					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
+					$p.identifier,
+					$p.title,
+					($p.priorityLabel // "-"),
+					$p.state.name
+				],
+				(
+					$p.children.nodes | sort_by(.identifier) | .[]? |
+					[
+						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
+						("  ↳ " + .identifier),
+						.title,
+						(.priorityLabel // "-"),
+						.state.name
+					]
+				)
+			) | @tsv'
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 }
 
@@ -185,20 +196,17 @@ cmd::start() {
 		return 1
 	fi
 
+	# Store task globally for cleanup
+	_NANCY_CURRENT_TASK="$task"
+	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
+
 	# Fetch Linear context
 	declare -A project
 	_start_fetch_linear_context "$task" project || return 1
 
-	# Create ISSUES.md
-	_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
-
 	# Setup worktree
 	declare -A worktree
 	_start_setup_worktree "$task" worktree || return 1
-
-	# Store task globally for cleanup
-	_NANCY_CURRENT_TASK="$task"
-	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
 
 	# Setup signal handler
 	trap _start_cleanup SIGINT SIGTERM
@@ -213,6 +221,10 @@ cmd::start() {
 	local iteration=$(task::count_sessions "$task")
 
 	while :; do
+
+		# Create ISSUES.md
+		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
+
 		iteration=$((iteration + 1))
 		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 		local session_id=$(session::id "$task" "$iteration")
@@ -226,6 +238,7 @@ cmd::start() {
 		log::info "Session: $session_id"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
+
 
 		# Render main prompt (direct substitution matching orchestrator pattern)
 		local prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")

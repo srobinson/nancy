@@ -10,8 +10,23 @@ query GetSubIssues($id: ID!) {
       identifier
       title
       priorityLabel
+      sortOrder
       state {
         name
+      }
+      children(
+        filter: { state: { name: { nin: ["Cancelled", "Duplicate"] } } }
+        first: 50
+      ) {
+        nodes {
+          identifier
+          title
+          priorityLabel
+          sortOrder
+          state {
+            name
+          }
+        }
       }
     }
   }
