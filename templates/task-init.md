@@ -103,19 +103,19 @@ Worker executes sub-issues in manual sort order.
 
 ### Starting Nancy Worker
 
-Once Linear issues are ready, launch the Nancy orchestrator:
+Once Linear issues are ready, launch the Nancy worker session:
 
 ```bash
-nancy orchestrate <LINEAR_IDENTIFIER>
+nancy go <LINEAR_IDENTIFIER>
 ```
 
 **What happens:**
 
 - Creates new tmux window: `nancy-<LINEAR_IDENTIFIER>`
-- Spawns 3 panes:
-  - **Orchestrator** - Supervises worker, monitors progress
+- Spawns 2 panes:
   - **Worker** - Executes issues sequentially using Claude
-  - **Inbox** - Shows bidirectional messages
+  - **Monitor** - Tails sidecar lifecycle/runtime logs
+- Starts a detached **sidecar** session that supervises context usage and wrap-up timing
 - Creates a git worktree in a sibling directory in relation to the project root directory
   {project_root_dir} <-- main repo
   {project_root_dir}-worktrees/nancy-{LINEAR_IDENTIFIER} <-- worker worktree
@@ -123,7 +123,7 @@ nancy orchestrate <LINEAR_IDENTIFIER>
 **Example:**
 
 ```bash
-nancy orchestrate ALP-198
+nancy go ALP-198
 ```
 
 ### Worker Control Commands
@@ -135,7 +135,7 @@ nancy pause ALP-198
 ```
 
 - Creates PAUSE lock file
-- Sends directive to worker to end turn cleanly
+- Sends a helioy-bus control message to the live worker
 - Worker completes current work and waits
 - Loop pauses before next iteration
 
@@ -148,7 +148,7 @@ nancy unpause ALP-198
 - Removes PAUSE lock file
 - Worker continues with next iteration
 
-**Send directives:**
+**Send control messages:**
 
 ```bash
 nancy direct ALP-198 "Skip ALP-201 and move to ALP-202" --type directive
@@ -164,10 +164,10 @@ nancy status ALP-198
 ### Workflow
 
 1. Create Linear issues (parent + subs)
-2. Run `nancy orchestrate ALP-198`
+2. Run `nancy go ALP-198`
 3. Worker executes issues in sequence
 4. Use `/nancy:pause` to intervene
-5. Update issues or send directives
+5. Update issues or send helioy-bus control messages
 6. Use `/nancy:unpause` to resume
 
 ---

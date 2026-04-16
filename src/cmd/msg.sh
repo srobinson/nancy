@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # b_path:: src/cmd/msg.sh
-# Worker message command - simple interface for sending messages to orchestrator
+# Worker message command - send status updates over helioy-bus
 # ------------------------------------------------------------------------------
 
 cmd::msg() {
@@ -40,29 +40,34 @@ cmd::msg() {
 		;;
 	esac
 
-	local inbox_dir="$task_dir/comms/orchestrator/inbox"
-	mkdir -p "$inbox_dir"
+	if ! bus::available; then
+		echo "ERROR: helioy-bus is not available. Set NANCY_HELIOY_BUS_ROOT or use helioy-bus MCP send_message directly." >&2
+		return 1
+	fi
 
-	# Generate filename
-	local timestamp
-	timestamp=$(date -u +"%Y%m%dT%H%M%SZ")
-	local filename="${timestamp}-001.md"
+	local task
+	task=$(basename "$task_dir")
 
-	# Avoid collisions
-	local seq=1
-	while [[ -f "$inbox_dir/$filename" ]]; do
-		seq=$((seq + 1))
-		filename="${timestamp}-$(printf '%03d' $seq).md"
-	done
+	local from_agent
+	from_agent=$(bus::resolve_current_agent_id 2>/dev/null || true)
+	from_agent="${from_agent:-nancy:worker:${task}}"
 
-	# Write message
-	cat >"$inbox_dir/$filename" <<EOF
-**Type:** ${msg_type}
-**From:** worker
-**Priority:** ${priority}
+	local to_agent="${NANCY_BUS_TO:-*}"
+	local content
+	content=$(cat <<EOF
+Nancy worker update
+Task: ${task}
+Type: ${msg_type}
+Priority: ${priority}
 
 ${message}
 EOF
+)
 
-	echo "sent: $filename"
+	if ! bus::send_message "$to_agent" "$content" "$from_agent" "*" "nancy-${task}" "1" >/dev/null; then
+		echo "ERROR: Failed to send bus message" >&2
+		return 1
+	fi
+
+	echo "sent to bus: $to_agent"
 }

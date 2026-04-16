@@ -1,6 +1,6 @@
 # Authority
 
-**The Human controls this task. The orchestrator speaks for the Human. Follow directives immediately.**
+**The Human controls this task. Sidecar supervision may ask you to wrap up. Direct human guidance may arrive via helioy-bus. Follow those messages immediately.**
 
 # [{{PROJECT_IDENTIFIER}}]: {{PROJECT_TITLE}}
 
@@ -17,9 +17,12 @@
 PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
 
 - You are working in a git worktree at: {{WORKTREE_DIR}}
+- Task directory (ISSUES.md, COMPLETE): {{NANCY_CURRENT_TASK_DIR}}
 - Branch: nancy/{{TASK_NAME}}
 - All your commits stay isolated to this worktree
 - Push with: git push -u origin nancy/{{TASK_NAME}}
+
+⚠️ These are TWO distinct paths. The worktree contains your code. The task directory lives outside the worktree in the main repo's `.nancy/` folder. Always use the full absolute path when reading or editing ISSUES.md and COMPLETE.
 
 Use `git log --format=full -3` to understand recent changes and context from previous iterations.
 
@@ -143,7 +146,7 @@ If Todos is out of sync trust Linear.
 **Before marking the TASK complete, verify:**
 1. ✅ ALL issues in Linear are state "Worker Done" or "Done"
 2. ✅ ALL checkboxes in ISSUES.md are `[X]`
-3. ✅ Inbox is empty (`nancy inbox` shows no pending directives)
+3. ✅ Inbox is empty and no unread helioy-bus messages are blocking completion
 4. ✅ `just check && just build && just test` all pass
 
 **Only when ALL above are true:**

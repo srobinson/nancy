@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # b_path:: src/cmd/direct.sh
-# Send a directive to a worker agent
-# Uses new bidirectional comms API (Phase 1)
+# Send a control message to the current worker over helioy-bus
 # ------------------------------------------------------------------------------
 
 cmd::direct() {
@@ -69,15 +68,39 @@ cmd::direct() {
 		return 1
 	fi
 
-	# Send directive using new comms API
-	# comms::orchestrator_send <task> <type> <message> [priority]
-	local filename
-	filename=$(comms::orchestrator_send "$task" "$msg_type" "$message" "$priority")
+	local content
+	content=$(cat <<EOF
+Nancy control message
+Task: ${task}
+Type: ${msg_type}
+Priority: ${priority}
 
-	if [[ -n "$filename" ]]; then
-		ui::success "Directive sent: $filename"
-	else
-		log::error "Failed to send directive"
-		return 1
+${message}
+EOF
+)
+
+	local to_agent
+	to_agent=""
+	if bus::available; then
+		to_agent=$(bus::resolve_task_worker_agent "$task")
 	fi
+	if [[ -n "$to_agent" ]]; then
+		if ! bus::send_message "$to_agent" "$content" "nancy:operator:${task}" "*" "nancy-${task}" "1" >/dev/null; then
+			log::error "Failed to send directive over helioy-bus"
+			return 1
+		fi
+		ui::success "Sent ${msg_type} message to ${to_agent}"
+		return 0
+	fi
+
+	local pane
+	pane=$(bus::inject_task_worker "$task" "$message")
+	if [[ -n "$pane" ]]; then
+		log::warn "Worker not registered on helioy-bus; injected message directly into pane ${pane}"
+		ui::success "Sent ${msg_type} message to live worker pane"
+		return 0
+	fi
+
+	log::error "No live worker agent or pane found for task '$task'"
+	return 1
 }

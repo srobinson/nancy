@@ -12,6 +12,31 @@
 # ------------------------------------------------------------------------------
 
 CLAUDE_CMD="claude"
+
+# Role → config dir mapping. Default unknown roles to eng.
+declare -A NANCY_ROLE_CONFIG_DIRS=(
+	[pm]="$HOME/.claude.nancy-pm"
+	[eng]="$HOME/.claude.nancy-eng"
+	[engineer]="$HOME/.claude.nancy-eng"
+	[clinical-reviewer]="$HOME/.claude.nancy-eng"
+)
+readonly NANCY_ROLE_DEFAULT="eng"
+
+cli::claude::_config_dir_for_role() {
+	local role="${1:-$NANCY_ROLE_DEFAULT}"
+	echo "${NANCY_ROLE_CONFIG_DIRS[$role]:-${NANCY_ROLE_CONFIG_DIRS[$NANCY_ROLE_DEFAULT]}}"
+}
+
+cli::claude::_build_env() {
+	local role="${1:-$NANCY_ROLE_DEFAULT}"
+	local -n out="$2"
+	out=("CLAUDE_CONFIG_DIR=$(cli::claude::_config_dir_for_role "$role")")
+	# mitmdump capture (optional debug hook)
+	if lsof -i :8123 -sTCP:LISTEN -t >/dev/null 2>&1; then
+		out+=("ANTHROPIC_BASE_URL=http://localhost:8123")
+	fi
+}
+
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 CLAUDE_PROJECTS_DIR="${CLAUDE_CONFIG_DIR}/projects"
 
@@ -107,6 +132,7 @@ cli::claude::init_session() {
 # Run Claude in interactive mode
 cli::claude::run_interactive() {
 	local prompt="${1:-}"
+	local role="${2:-pm}"
 	local args=("--dangerously-skip-permissions")
 
 	local uuid
@@ -119,7 +145,10 @@ cli::claude::run_interactive() {
 	args+=("--session-id" "$uuid")
 	args+=("--agent" "helioy-tools:research-synthesizer")
 
-	"$CLAUDE_CMD" "${args[@]}" "$prompt"
+	local -a claude_env
+	cli::claude::_build_env "$role" claude_env
+
+	env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt"
 }
 
 # Run Claude with a prompt (non-interactive)
@@ -129,10 +158,9 @@ cli::claude::run_prompt() {
 	local export_file="$3"
 	local NANCY_TASK_DIR="$4"
 	local agent_role="${5:-}"
+	local uuid="${6:-$(uuid::generate)}"
 	local model="${NANCY_MODEL:-}"
-
-	local uuid
-	uuid=$(uuid::generate)
+	local print_mode="${NANCY_CLAUDE_PRINT_MODE:-false}"
 
 	local args=("--dangerously-skip-permissions")
 
@@ -145,35 +173,35 @@ cli::claude::run_prompt() {
 	if [[ -n "$model" ]]; then
 		args+=("--model" "$model")
 	fi
-
-	# Use streaming JSON output for real-time visibility
-	# Claude writes to session file regardless of output format
-	args+=("--include-partial-messages" "--output-format" "stream-json" "--verbose" "--debug")
-
-	# Claude uses -p for prompt input
-	args+=("-p" "$prompt_text")
+	args+=("--effort" "max")
+	if [[ "$print_mode" == "true" ]]; then
+		args+=("--print")
+		args+=("--output-format" "stream-json")
+		args+=("--include-partial-messages")
+	fi
 
 	log::debug "Running Claude with session UUID: $uuid"
 
 	mkdir -p "${NANCY_TASK_DIR}/logs"
-
-	echo "NANCY_FRAMEWORK_ROOT: $NANCY_FRAMEWORK_ROOT"
-	echo "NANCY_CURRENT_TASK_DIR: $NANCY_CURRENT_TASK_DIR"
-	echo "NANCY_TASK_DIR: $NANCY_TASK_DIR"
+	echo "$uuid" >"$NANCY_TASK_DIR/.worker_uuid"
 
 	# Track Claude PID so `nancy stop` can kill it reliably.
 	# The subshell writes $BASHPID then exec replaces itself with Claude,
 	# so the PID file contains Claude's actual process ID.
 	local pid_file="$NANCY_TASK_DIR/.worker_pid"
+	local -a claude_env
+	cli::claude::_build_env "$agent_role" claude_env
 
-	# Background pipeline so bash can process SIGINT trap during execution.
-	# Without this, bash defers trap handling until the foreground pipeline
-	# completes, but Claude catches SIGINT internally (to cancel tool
-	# execution, not to exit) — deadlocking the script on Ctrl+C.
 	set -o pipefail
 	(
 		echo $BASHPID >"$pid_file"
-		exec "$CLAUDE_CMD" "${args[@]}"
+		if [[ "$print_mode" == "true" ]]; then
+			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
+		else
+			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" \
+				--include-partial-messages --output-format stream-json --verbose --debug \
+				-p "$prompt_text"
+		fi
 	) |
 		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" |
 		_claude_format_stream |
@@ -181,8 +209,6 @@ cli::claude::run_prompt() {
 		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log" &
 	local pipeline_pid=$!
 
-	# wait is interruptible by signals, so the SIGINT trap in start.sh
-	# fires immediately on Ctrl+C and can kill Claude via the PID file.
 	wait $pipeline_pid 2>/dev/null
 	local exit_code=$?
 	set +o pipefail

@@ -21,8 +21,11 @@ You are a code review agent running AFTER the main worker completed iteration #{
 **NOT your job:**
 - Starting new work
 - Changing requirements
-- Working on issues not touched this iteration
 - Creating new features beyond what was implemented
+
+**Review scope:**
+- **Primary:** the work touched this iteration. Bugs, edge cases, missing tests, security concerns, code quality.
+- **Secondary:** any hard-limit violation (>700 LOC files, >150 LOC functions, DRY violations) introduced OR grown by this iteration. Fix even if the file was already non-compliant before this iteration touched it. Existing non-compliance is not a license to grow further. The 700-LOC ceiling is mechanically enforced by `scripts/check-loc-limit.sh` and `just check`.
 
 ## Context
 
@@ -65,24 +68,24 @@ Only fall back to Search/Grep/Read as a last resort.
 3. **If issues found:**
    - Fix them directly (don't just report)
    - Commit with: `review[{{TASK_NAME}}]: <fix description>`
-   - Send message: `nancy msg progress "Review fixed: <summary>"`
+   - Send an update over helioy-bus describing what the review fixed
    - Use parallel tool calls when possible
    - Spawn subagents for complex fixes
 
 4. **If everything looks good:**
-   - Send message: `nancy msg progress "Code review passed, no issues found"`
+   - Send an update over helioy-bus that the review passed cleanly
    - Exit cleanly
 
 ## Communication
 
-Use the messaging system to communicate your findings:
+Use helioy-bus to communicate your findings:
 
 ```bash
-# Report progress
-nancy msg progress "Review completed: fixed edge case in validation logic"
-
-# Report blockers (only if critical issue can't be auto-fixed)
-nancy msg blocker "Critical security issue found that needs human review"
+send_message(
+  to="*",
+  content="Review update for {{TASK_NAME}}: fixed edge case in validation logic",
+  topic="nancy-{{TASK_NAME}}"
+)
 ```
 
 ## Quality Checks
@@ -94,11 +97,11 @@ Before finishing, verify:
 
 If quality checks fail, fix the issues and commit the fixes.
 
-If you catch yourself thinking "There are lint warnings but these are in the code that was already there." you are not being a good citizen. We all work for each other here.
+If you catch yourself thinking "There are lint warnings but these are in the code that was already there." you are not being a good citizen. We all work for each other here. Same applies to LOC limits and DRY violations: if a file you touched grew past 700 LOC, even if it started over 700, refactor it back down before committing. If you saw a duplicated helper and shrugged, you failed the review.
 
 ## Exit
 
 When done (fixed issues OR nothing to fix), simply exit.
 The main loop will continue to the next iteration.
 
-**Remember:** You are a continuation agent. Improve the work, don't critique it.
+**Remember:** You are a continuation agent. Improve the work, not just critique it. Hard-limit violations (LOC, DRY) are improvements, not critiques. Fix them.

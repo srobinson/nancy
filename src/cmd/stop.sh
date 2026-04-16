@@ -20,6 +20,8 @@ cmd::stop() {
 	local pid_file="${task_dir}/.worker_pid"
 	local stop_file="${task_dir}/STOP"
 
+	sidecar::stop "$task" 2>/dev/null || true
+
 	# Kill Claude subprocess if running
 	if [[ -f "$pid_file" ]]; then
 		local worker_pid

@@ -5,11 +5,14 @@
 
 # Global for cleanup handler access
 _NANCY_CURRENT_TASK=""
+_NANCY_CURRENT_SIDECAR_SESSION=""
 
 _start_cleanup() {
 	echo ""
 	log::warn "Interrupted. Stopping Nancy..."
 	if [[ -n "$_NANCY_CURRENT_TASK" ]]; then
+		sidecar::stop "$_NANCY_CURRENT_TASK" "$_NANCY_CURRENT_SIDECAR_SESSION" 2>/dev/null || true
+		_NANCY_CURRENT_SIDECAR_SESSION=""
 		# Kill Claude subprocess first
 		local pid_file="$NANCY_TASK_DIR/$_NANCY_CURRENT_TASK/.worker_pid"
 		if [[ -f "$pid_file" ]]; then
@@ -23,13 +26,6 @@ _start_cleanup() {
 				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
 			fi
 			rm -f "$pid_file"
-		fi
-		# Kill any remaining pipeline processes (tee, jq) that
-		# may linger after Claude exits. jobs -p lists background PIDs.
-		local remaining_pids
-		remaining_pids=$(jobs -p 2>/dev/null)
-		if [[ -n "$remaining_pids" ]]; then
-			kill $remaining_pids 2>/dev/null || true
 		fi
 		# Clean up sentinel
 		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
@@ -232,7 +228,7 @@ _start_run_review_agent() {
 
 	# Run review agent
 	local exit_code=0
-	cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
+	NANCY_CLAUDE_PRINT_MODE=true cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"
@@ -290,7 +286,6 @@ cmd::start() {
 		# incoming worker session starts with an empty inbox.
 		comms::archive_all "$task" "worker"
 		comms::archive_all "$task" "orchestrator"
-
 		iteration=$((iteration + 1))
 		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 		local session_id=$(session::id "$task" "$iteration")
@@ -350,12 +345,40 @@ The orchestrator will reassign you when your next issue is unblocked."
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
 
-		notify::watch_tokens_bg "$task" "$iteration"
+		local uuid
+		uuid=$(uuid::generate)
+		local sidecar_log="$NANCY_CURRENT_TASK_DIR/logs/sidecar.log"
+		mkdir -p "$(dirname "$sidecar_log")"
+		echo "[$(date -Iseconds)] preparing sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$uuid" >>"$sidecar_log"
+
+		local worker_pane=""
+		local sidecar_active=0
+		local sidecar_session=""
+		if [[ -n "${TMUX:-}" ]] && sidecar::enabled; then
+			worker_pane="${TMUX_PANE:-}"
+			if [[ -z "$worker_pane" ]]; then
+				worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
+			fi
+			echo "[$(date -Iseconds)] sidecar candidate pane: ${worker_pane:-<empty>}" >>"$sidecar_log"
+			if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "${worktree[dir]}" >>"$sidecar_log" 2>&1; then
+				sidecar_active=1
+				sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
+				_NANCY_CURRENT_SIDECAR_SESSION="$sidecar_session"
+				echo "[$(date -Iseconds)] sidecar spawn invoked: ${sidecar_session:-<unknown>}" >>"$sidecar_log"
+			else
+				echo "[$(date -Iseconds)] sidecar spawn failed" >>"$sidecar_log"
+			fi
+		else
+			echo "[$(date -Iseconds)] sidecar skipped" >>"$sidecar_log"
+		fi
 
 		local exit_code=0
-		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$agent_role" || exit_code=$?
+		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$agent_role" "$uuid" || exit_code=$?
 
-		notify::stop_token_watcher "$task"
+		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
+		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
+			_NANCY_CURRENT_SIDECAR_SESSION=""
+		fi
 
 		# Check for stop sentinel (written by `nancy stop`)
 		local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
