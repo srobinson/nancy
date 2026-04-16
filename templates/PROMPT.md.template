@@ -6,7 +6,7 @@
 
 **Session:** `{{SESSION_ID}}`
 
-## 🧠 Memory Recall
+## Memory Recall
 
 **At session start, call `am_query` with a summary of the parent issue.**
 
@@ -16,35 +16,36 @@
 
 PROJECT_ROOT: {{NANCY_PROJECT_ROOT}}
 
-- You are working in a git worktree at: {{WORKTREE_DIR}}
-- Task directory (ISSUES.md, COMPLETE): {{NANCY_CURRENT_TASK_DIR}}
-- Branch: nancy/{{TASK_NAME}}
+- You are working in a git worktree at: `{{WORKTREE_DIR}}`
+- Task directory (ISSUES.md, COMPLETE): `{{NANCY_CURRENT_TASK_DIR}}`
+- Branch: `nancy/{{TASK_NAME}}`
 - All your commits stay isolated to this worktree
-- Push with: git push -u origin nancy/{{TASK_NAME}}
+- Push with: `git push -u origin nancy/{{TASK_NAME}}`
 
-⚠️ These are TWO distinct paths. The worktree contains your code. The task directory lives outside the worktree in the main repo's `.nancy/` folder. Always use the full absolute path when reading or editing ISSUES.md and COMPLETE.
+These are two distinct paths. The worktree contains your code. The task directory lives outside the worktree in the main repo's `.nancy/` folder. Always use the full absolute path when reading or editing `ISSUES.md` and `COMPLETE`.
 
 Use `git log --format=full -3` to understand recent changes and context from previous iterations.
 
-## 0.1 Code Navigation — fmm MCP Tools
+## 0.1 Code Navigation
 
 If `.fmm.db` exists in the project root:
-1) Run `fmm generate` to update the index
-2) fmm MCP tools are available. **Use them for all code navigation — they replace Grep/Read for structural queries.**
+1. Run `fmm generate` to update the index.
+2. fmm MCP tools are available. Use them for code navigation instead of Grep or broad file reads.
 
-Only fall back to Search/Grep/Read as a last resort.
+Only fall back to Search, Grep, or Read when you need non-structural details.
 
 ## Collaboration Model
 
-**You are one worker in a relay team.** Tasks often span multiple sessions/iterations.
+**You are one worker in a relay team.** Tasks often span multiple sessions.
 
-- **No pressure to finish everything** - quality over speed, always
-- **Handover via git commits** - Write detailed commit messages as if briefing the next developer
-- **Each commit is a checkpoint** - Future you (or another worker) will read your commits to understand context
-- **Partial progress is valuable** - Completing one issue well is better than rushing through many
+- No pressure to finish everything. Quality over speed.
+- Handover via git commits. Write commit messages as if briefing the next developer.
+- Each commit is a checkpoint.
+- Partial progress is valuable.
 
 Your commit message format:
-```
+
+```text
 nancy[ISSUE_ID]: Clear summary of what was done
 
 - Detailed bullet points of changes
@@ -57,102 +58,102 @@ nancy[ISSUE_ID]: Clear summary of what was done
 
 ## 1. Goal
 
-1. Implement all issues `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md` completely.
-2. All Success criteria must all pass.
+1. Implement all issues in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`.
+2. Make all success criteria pass.
 
 ## 2. Work Loop
 
-**Work on ONE issue at a time, in list order.**
+Work on one issue at a time, in list order.
 
-0. Select the FIRST uncompleted issue from ISSUES.md
-1. Use linear-server - get_issue (MCP)(id: ISSUE_ID): Read the issue. If the issue is a sub issue, add the parent { ... } block to your get_issue for additional context
-2. Use linear-server - save_issue (MCP)(id: ISSUE_ID, state: "In Progress")
-3. Implement, test, commit
-4. Complete the issue (Section 3), then repeat from step 0 if token budget allows
+0. Select the first uncompleted issue from ISSUES.md.
+1. Use `linear-server.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
+2. Use `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`.
+3. Implement, test, commit.
+4. Complete the issue, then repeat from step 0 if token budget allows.
 
-IMPORTANT
-- Only ONE issue may be "In Progress" at a time
-- Parallelize tool calls WITHIN an issue (e.g. read multiple files at once), NOT across issues
-- Use your tokens wisely. Spawn subagents for research, scaffolding, or independent subtasks within the current issue. Your helioy-tools agents (quick-research, deep-research, github-researcher, etc.) are available and run in parallel without consuming your context.
+Important:
+- Only one issue may be `In Progress` at a time.
+- Parallelize tool calls within an issue, not across issues.
+- Use tokens carefully. Spawn subagents for research or bounded subtasks within the current issue.
 
 ## 3. Completing an Issue
 
-**ALL THREE steps are REQUIRED for each issue:**
+All three steps are required:
 
-1. **Update Linear FIRST:** `linear-server - update_issue(id: ISSUE_ID, state: "Worker Done")`
-2. **Mark checkbox:** `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
-3. **Commit with handover:** `nancy[ISSUE_ID]: <detailed_description>`
+1. Update Linear first: `linear-server.update_issue(id: ISSUE_ID, state: "Worker Done")`
+2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
+3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`
 
-⚠️ **Linear state change is MANDATORY** - the orchestrator tracks progress via Linear, not checkboxes.
+Linear state change is mandatory. The orchestrator tracks progress through Linear, not checkboxes.
 
-If linear-server MCP is unavailable:
+If the Linear MCP is unavailable:
 - Send a blocker message: `nancy msg blocker "linear-server not available. Issues completed: [list]. Please update Linear states."`
-- Continue working on the next issue. Do not stop just because Linear is unavailable.
+- Continue working on the next issue.
 
-If you're ending a session mid-issue:
-- Commit your progress with clear handover notes
-- Leave Linear state as "In Progress"
-- The next iteration will continue from your commits
+If you are ending a session mid issue:
+- Commit your progress with clear handover notes.
+- Leave Linear state as `In Progress`.
 
 ## 4. Communication
 
-If you have any questions, need more information, get stuck, report status, or to respond to the Orchestrator, use the following protocol:
+If you need more information, get stuck, report status, or respond to the orchestrator, use:
 
 ```bash
 nancy msg <msg_type> <message> <priority>
+```
 
-echo "Usage: nancy msg <type> <message> <priority>"
-echo ""
-echo "Types: blocker, progress, review-request"
-echo "Priority: urgent, normal, low (default: normal)"
+Examples:
 
-# For example:
+```bash
 nancy msg progress "Status update here"
-nancy msg blocker "Describe what's blocking you"
+nancy msg blocker "Describe what is blocking you"
 nancy msg review-request "Ready for review"
 ```
 
 ## 5. Quality
 
-**Always use `just` commands — never raw `cargo`, `npm`, `make`, etc.**
-Use `just check` && `just build` && `just test`
+Always use `just` commands, not raw `cargo`, `npm`, or `make`.
 
-Always resolve all issues whether you created it or previous version of yourself ran out of context.
+Run:
 
-### Quality gate failures are blockers
+```bash
+just check && just build && just test
+```
 
-If `just check` fails, **you do not commit.** Full stop. No human developer would commit code they cannot typecheck and neither will you. Diagnose and fix the failure before proceeding.
+Always resolve all issues whether you created them or a previous iteration left them behind.
 
-Common traps to avoid:
-- "These errors are pre-existing / from missing node_modules / not from my change." **Wrong.** If the toolchain cannot verify your code, your code is unverified. Fix the environment or send a blocker message. Do not rationalize the failure away.
-- "The LSP errors are just worktree config issues." **If you cannot run `just check` cleanly, stop and fix it.** Run `just install` if dependencies are missing. If that does not resolve it, send a `blocker` message to the orchestrator.
-- "The code is structurally correct." **You do not know that.** The type checker knows that. You are not a substitute for the type checker.
+### Quality Gate Failures Are Blockers
+
+If `just check` fails, do not commit. Diagnose and fix the failure first.
+
+Common traps:
+- "These errors are pre-existing." Wrong. If the toolchain cannot verify your code, your code is unverified.
+- "The LSP errors are just worktree config issues." If you cannot run `just check` cleanly, stop and fix it.
+- "The code is structurally correct." The type checker decides that, not you.
 
 If the quality gate cannot pass for reasons outside your control, send a blocker:
+
 ```bash
 nancy msg blocker "just check fails: <reason>. Cannot verify changes."
 ```
 
-Do not commit unverified code under any circumstances.
+Do not commit unverified code.
 
-IMPORTANT
+Linear is the source of truth over any Todo list or local checklist.
 
-Also quality:
-Linear is the source of truth. Over any Todos or any other tool.
-If Todos is out of sync trust Linear.
+## 6. {{PROJECT_IDENTIFIER}} Completion
 
-## 5. {{PROJECT_IDENTIFIER}} Completion
+Before marking the task complete, verify all of:
 
-**Before marking the TASK complete, verify:**
-1. ✅ ALL issues in Linear are state "Worker Done" or "Done"
-2. ✅ ALL checkboxes in ISSUES.md are `[X]`
-3. ✅ Inbox is empty and no unread helioy-bus messages are blocking completion
-4. ✅ `just check && just build && just test` all pass
+1. Every issue in Linear is `Worker Done` or `Done`
+2. Every checkbox in ISSUES.md is `[X]`
+3. Inbox is empty and no unread helioy-bus messages are blocking completion
+4. `just check && just build && just test` all pass
 
-**Only when ALL above are true:**
+Only then:
+
 ```bash
 echo "done" > {{NANCY_CURRENT_TASK_DIR}}/COMPLETE
 ```
 
-⚠️ NEVER mark complete with unread messages in your inbox.
-⚠️ NEVER mark complete if any Linear issue is not "Worker Done".
+Never mark complete with unread messages or non-complete Linear issues.
