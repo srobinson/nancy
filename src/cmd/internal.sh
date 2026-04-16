@@ -148,7 +148,8 @@ cmd::_monitor() {
 	local runtime_log="${task_dir}/logs/sidecar-runtime.log"
 
 	mkdir -p "${task_dir}/logs"
-	touch "$sidecar_log" "$runtime_log"
+	[[ -f "$sidecar_log" ]] || : >"$sidecar_log"
+	[[ -f "$runtime_log" ]] || : >"$runtime_log"
 
 	ui::header "📡 Monitor - $task"
 	ui::muted "Following sidecar lifecycle and runtime logs"
@@ -166,7 +167,6 @@ cmd::_sidecar() {
 
 	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir"
 }
-
 # Inbox pane - watch for bidirectional messages
 cmd::_logs() {
 	local task="$1"
