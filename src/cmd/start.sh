@@ -228,7 +228,7 @@ _start_run_review_agent() {
 
 	# Run review agent
 	local exit_code=0
-	CLAUDE_CONFIG_DIR=/Users/alphab/.claude.nancy cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
+	NANCY_CLAUDE_PRINT_MODE=true CLAUDE_CONFIG_DIR=/Users/alphab/.claude.nancy cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"

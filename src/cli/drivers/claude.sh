@@ -160,6 +160,7 @@ cli::claude::run_prompt() {
 	local agent_role="${5:-}"
 	local uuid="${6:-$(uuid::generate)}"
 	local model="${NANCY_MODEL:-}"
+	local print_mode="${NANCY_CLAUDE_PRINT_MODE:-false}"
 
 	local args=("--dangerously-skip-permissions")
 
@@ -173,6 +174,11 @@ cli::claude::run_prompt() {
 		args+=("--model" "$model")
 	fi
 	args+=("--effort" "max")
+	if [[ "$print_mode" == "true" ]]; then
+		args+=("--print")
+		args+=("--output-format" "stream-json")
+		args+=("--include-partial-messages")
+	fi
 
 	log::debug "Running Claude with session UUID: $uuid"
 
@@ -194,7 +200,15 @@ cli::claude::run_prompt() {
 		echo exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}"
 		echo "=============================================="
 
-		exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
+		if [[ "$print_mode" == "true" ]]; then
+			local formatter_colors="false"
+			if [[ -t 1 ]]; then
+				formatter_colors="true"
+			fi
+			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text" > >(_claude_format_stream "$formatter_colors")
+		else
+			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
+		fi
 	)
 	local exit_code=$?
 

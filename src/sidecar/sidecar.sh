@@ -159,6 +159,40 @@ sidecar::run() {
 	sidecar::_monitor_loop "$task" "$worker_pane" "$worktree_dir"
 }
 
+sidecar::_handover_file() {
+	local task="$1"
+
+	[[ -z "$task" ]] && return 1
+	printf '%s\n' "$NANCY_TASK_DIR/$task/HANDOVER.md"
+}
+
+sidecar::_file_mtime() {
+	local file="$1"
+
+	[[ -f "$file" ]] || return 1
+
+	stat -f '%m' "$file" 2>/dev/null ||
+		stat -c '%Y' "$file" 2>/dev/null
+}
+
+sidecar::_handover_changed() {
+	local task="$1"
+	local baseline_mtime="${2:-0}"
+	local handover_file current_mtime
+
+	handover_file=$(sidecar::_handover_file "$task") || return 1
+	current_mtime=$(sidecar::_file_mtime "$handover_file" 2>/dev/null || true)
+	[[ -n "$current_mtime" ]] || return 1
+
+	((current_mtime > baseline_mtime))
+}
+
+sidecar::_detect_handover_active() {
+	local pane_text="$1"
+
+	printf '%s\n' "$pane_text" | grep -Eq 'session-handover|Successfully loaded skill|Handover written to|HANDOVER\.md|/handovers/' 
+}
+
 sidecar::_monitor_loop() {
 	local task="$1"
 	local worker_pane="$2"
@@ -170,6 +204,7 @@ sidecar::_monitor_loop() {
 	local armed_threshold="${NANCY_SIDECAR_ARMED_THRESHOLD:-70}"
 	local kill_threshold="${NANCY_SIDECAR_KILL_THRESHOLD:-75}"
 	local handover_grace_seconds="${NANCY_SIDECAR_HANDOVER_GRACE_SECONDS:-45}"
+	local handover_timeout_seconds="${NANCY_SIDECAR_HANDOVER_TIMEOUT_SECONDS:-180}"
 	local worker_grace_polls="${NANCY_SIDECAR_WORKER_GRACE_POLLS:-6}"
 	local max_capture_failures="${NANCY_SIDECAR_MAX_CAPTURE_FAILURES:-5}"
 
@@ -184,9 +219,11 @@ sidecar::_monitor_loop() {
 	local last_percent=""
 	local consecutive_capture_failures=0
 	local armed_at=0
+	local handover_mtime_at_arm=0
+	local handover_active=0
 	last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 
-	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s)"
+	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
 
 	while true; do
 		if ! sidecar::_pane_exists "$worker_pane"; then
@@ -264,12 +301,23 @@ sidecar::_monitor_loop() {
 					last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 					state="armed"
 					armed_at=$(date +%s)
+					handover_mtime_at_arm=$(sidecar::_file_mtime "$(sidecar::_handover_file "$task")" 2>/dev/null || echo 0)
+					handover_active=0
 					logged_handover_grace=0
 					sidecar::_request_handover "$worker_pane"
 					log::info "Sidecar armed at ${percent}% context"
 				fi
 				;;
 			armed)
+				if ((handover_active == 0)) && sidecar::_detect_handover_active "$pane_text"; then
+					handover_active=1
+					log::info "Handover skill activity detected; waiting for handover artifact"
+				fi
+				if sidecar::_handover_changed "$task" "$handover_mtime_at_arm"; then
+					log::info "Handover file updated; terminating worker"
+					sidecar::_kill_worker "$task" "$worker_pane"
+					return 0
+				fi
 				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit"; then
 					local break_kind="$SIDECAR_BREAK_KIND"
 					last_commit="$SIDECAR_LAST_COMMIT"
@@ -285,6 +333,15 @@ sidecar::_monitor_loop() {
 				local now handover_elapsed
 				now=$(date +%s)
 				handover_elapsed=$((now - armed_at))
+				if ((handover_active == 1)); then
+					if ((handover_elapsed >= handover_timeout_seconds)); then
+						log::warn "Handover skill exceeded ${handover_timeout_seconds}s without updating HANDOVER.md; terminating worker"
+						sidecar::_kill_worker "$task" "$worker_pane"
+						return 0
+					fi
+					sleep "$poll_seconds"
+					continue
+				fi
 				if ((handover_elapsed < handover_grace_seconds)); then
 					if ((percent >= kill_threshold && logged_handover_grace == 0)); then
 						log::info "Kill threshold reached at ${percent}% but preserving handover grace (${handover_elapsed}s/${handover_grace_seconds}s)"
