@@ -191,7 +191,7 @@ cli::claude::run_prompt() {
 		echo $BASHPID >"$pid_file"
 
 		echo "=============================================="
-		echo exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
+		echo exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}"
 		echo "=============================================="
 
 		exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"

@@ -168,7 +168,8 @@ sidecar::_monitor_loop() {
 	local bootstrap_retries="${NANCY_SIDECAR_BOOTSTRAP_RETRIES:-10}"
 	local bootstrap_sleep_seconds="${NANCY_SIDECAR_BOOTSTRAP_SLEEP_SECONDS:-1}"
 	local armed_threshold="${NANCY_SIDECAR_ARMED_THRESHOLD:-70}"
-	local kill_threshold="${NANCY_SIDECAR_KILL_THRESHOLD:-80}"
+	local kill_threshold="${NANCY_SIDECAR_KILL_THRESHOLD:-75}"
+	local handover_grace_seconds="${NANCY_SIDECAR_HANDOVER_GRACE_SECONDS:-45}"
 	local worker_grace_polls="${NANCY_SIDECAR_WORKER_GRACE_POLLS:-6}"
 	local max_capture_failures="${NANCY_SIDECAR_MAX_CAPTURE_FAILURES:-5}"
 
@@ -179,11 +180,13 @@ sidecar::_monitor_loop() {
 	local bootstrap_checks=0
 	local logged_worker_ready=0
 	local logged_context_visible=0
+	local logged_handover_grace=0
 	local last_percent=""
 	local consecutive_capture_failures=0
+	local armed_at=0
 	last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 
-	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}%)"
+	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s)"
 
 	while true; do
 		if ! sidecar::_pane_exists "$worker_pane"; then
@@ -256,29 +259,47 @@ sidecar::_monitor_loop() {
 		fi
 
 		case "$state" in
-		monitoring)
-			if ((percent >= armed_threshold)); then
-				last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
-				state="armed"
-				# sidecar::_request_handover "$worker_pane"
-				log::info "Sidecar armed at ${percent}% context"
-			fi
-			;;
-		armed)
-			if ((percent >= kill_threshold)); then
-				log::warn "Kill threshold reached at ${percent}%; terminating worker"
-				sidecar::_kill_worker "$task" "$worker_pane"
-				return 0
-			fi
-			if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit"; then
-				local break_kind="$SIDECAR_BREAK_KIND"
-				last_commit="$SIDECAR_LAST_COMMIT"
-				log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
-				sidecar::_kill_worker "$task" "$worker_pane"
-				return 0
-			fi
-			;;
-		esac
+			monitoring)
+				if ((percent >= armed_threshold)); then
+					last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
+					state="armed"
+					armed_at=$(date +%s)
+					logged_handover_grace=0
+					sidecar::_request_handover "$worker_pane"
+					log::info "Sidecar armed at ${percent}% context"
+				fi
+				;;
+			armed)
+				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit"; then
+					local break_kind="$SIDECAR_BREAK_KIND"
+					last_commit="$SIDECAR_LAST_COMMIT"
+					log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
+					sidecar::_kill_worker "$task" "$worker_pane"
+					return 0
+				fi
+				if sidecar::_detect_exit_ready "$pane_text"; then
+					log::info "Worker appears ready to exit at ${percent}%; terminating worker"
+					sidecar::_kill_worker "$task" "$worker_pane"
+					return 0
+				fi
+				local now handover_elapsed
+				now=$(date +%s)
+				handover_elapsed=$((now - armed_at))
+				if ((handover_elapsed < handover_grace_seconds)); then
+					if ((percent >= kill_threshold && logged_handover_grace == 0)); then
+						log::info "Kill threshold reached at ${percent}% but preserving handover grace (${handover_elapsed}s/${handover_grace_seconds}s)"
+						logged_handover_grace=1
+					fi
+					sleep "$poll_seconds"
+					continue
+				fi
+				if ((percent >= kill_threshold)); then
+					log::warn "Kill threshold reached at ${percent}% after ${handover_elapsed}s handover grace; terminating worker"
+					sidecar::_kill_worker "$task" "$worker_pane"
+					return 0
+				fi
+				;;
+			esac
 
 		sleep "$poll_seconds"
 	done
@@ -331,18 +352,19 @@ sidecar::_detect_break_point() {
 	SIDECAR_BREAK_KIND=""
 	SIDECAR_LAST_COMMIT="$last_commit"
 
-	local current_commit
-	current_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
-	if [[ -n "$current_commit" && "$current_commit" != "$last_commit" ]]; then
-		SIDECAR_BREAK_KIND="commit"
-		SIDECAR_LAST_COMMIT="$current_commit"
-		return 0
-	fi
+	# TODO: Re-enable commit-based breakpoints if we can make them more reliable. This triggers on git add
+	# local current_commit
+	# current_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
+	# if [[ -n "$current_commit" && "$current_commit" != "$last_commit" ]]; then
+	# 	SIDECAR_BREAK_KIND="commit"
+	# 	SIDECAR_LAST_COMMIT="$current_commit"
+	# 	return 0
+	# fi
 
 	local pane_text
 	pane_text=$(sidecar::_capture_worker "$worker_pane")
 
-	if echo "$pane_text" | grep -Eq 'Worker Done|get_issue'; then
+	if echo "$pane_text" | grep -Fq '"Worker Done"'; then
 		SIDECAR_BREAK_KIND="issue-transition"
 		return 0
 	fi
@@ -376,6 +398,7 @@ sidecar::_request_handover() {
 
 	[[ -z "$worker_pane" ]] && return 1
 
+	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
 	tmux send-keys -t "$worker_pane" -l "/session-handover" 2>/dev/null || return 1
 	tmux send-keys -t "$worker_pane" Enter 2>/dev/null || return 1

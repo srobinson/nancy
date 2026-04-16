@@ -6,7 +6,7 @@
 
 These come from CLAUDE.md and override every other directive in this document. They are mechanically enforced. `just check` will fail and block the commit if any are violated.
 
-- **700 LOC per file.** New `.ts` files under `src/` and `tests/` must stay under. Files already over are pinned at their current size by `scripts/check-loc-limit.sh` (refactor-or-shrink, never grow).
+- **500-700 LOC per file.** New files under `src/` and `tests/` must stay under. Files already over are pinned at their current size by `scripts/check-loc-limit.sh` (refactor-or-shrink, never grow).
 - **150 LOC per function.** Long functions hide duplication and kill readability. Split before modifying.
 - **DRY, no compromise.** Before writing a new function, helper, type, or constant, search for an existing one. If close, refactor to share. Never copy a block "just for this case". Never re-declare a type that already lives somewhere else. A PR that introduces duplication is not complete.
 - **Verify before done.** Run `just check && just build && just test` before every commit. Failures block the commit. Never rationalize as "pre-existing".
@@ -67,8 +67,8 @@ Your context window is the bottleneck, not your wall clock. Reading a file puts 
 
 All steps required:
 
-1. `linear-server.save_issue(id: ISSUE_ID, state: "Worker Done")`
-2. Commit with a handover message and the `[X]` checkbox update in ISSUES.md, using this format:
+1. Commit with a handover message and the `[X]` checkbox update in ISSUES.md, using this format:
+2. `linear-server.save_issue(id: ISSUE_ID, state: "Worker Done")`
 
 ```
 nancy[ISSUE_ID]: Clear summary of what was done
