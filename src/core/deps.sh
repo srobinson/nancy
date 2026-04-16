@@ -7,7 +7,7 @@
 DEPS_REQUIRED=(git jq gum tmux)
 
 # CLI tools - at least one required
-DEPS_CLI=(copilot claude opencode gemini)
+DEPS_CLI=(copilot claude codex opencode gemini)
 
 # ------------------------------------------------------------------------------
 

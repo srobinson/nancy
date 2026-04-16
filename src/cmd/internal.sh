@@ -129,6 +129,44 @@ Inbox"
 	done
 }
 
+# Monitor pane - follows worker and sidecar logs
+cmd::_monitor() {
+	local task="$1"
+
+	if [[ -z "$task" ]]; then
+		log::error "Usage: nancy _monitor <task>"
+		return 1
+	fi
+
+	if ! task::exists "$task"; then
+		log::error "Task '$task' not found"
+		return 1
+	fi
+
+	local task_dir="${NANCY_TASK_DIR}/${task}"
+	local sidecar_log="${task_dir}/logs/sidecar.log"
+	local runtime_log="${task_dir}/logs/sidecar-runtime.log"
+
+	mkdir -p "${task_dir}/logs"
+	[[ -f "$sidecar_log" ]] || : >"$sidecar_log"
+	[[ -f "$runtime_log" ]] || : >"$runtime_log"
+
+	ui::header "📡 Monitor - $task"
+	ui::muted "Following sidecar lifecycle and runtime logs"
+	echo "---"
+
+	tail -F "$sidecar_log" "$runtime_log"
+}
+
+# Detached sidecar session - observes worker pane and handles eviction
+cmd::_sidecar() {
+	local task="$1"
+	local uuid="$2"
+	local worker_pane="$3"
+	local worktree_dir="$4"
+
+	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir"
+}
 # Inbox pane - watch for bidirectional messages
 cmd::_logs() {
 	local task="$1"

@@ -4,3 +4,4 @@
 
 . "$NANCY_FRAMEWORK_ROOT/src/cli/drivers/copilot.sh"
 . "$NANCY_FRAMEWORK_ROOT/src/cli/drivers/claude.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cli/drivers/codex.sh"

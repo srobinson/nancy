@@ -35,10 +35,22 @@ token::_usage_file() {
 token::parse_usage() {
 	local line="$1"
 
-	# Only process assistant messages with usage data
+	# Normalize harness-specific usage events into the Claude-shaped usage object
+	# the rest of Nancy already expects.
 	echo "$line" | jq -c '
-		select(.type == "assistant") |
-		.message.usage // empty
+		if .type == "assistant" then
+			.message.usage // empty
+		elif .type == "turn.completed" then
+			.usage? |
+			{
+				input_tokens: (.input_tokens // 0),
+				cache_creation_input_tokens: 0,
+				cache_read_input_tokens: (.cached_input_tokens // 0),
+				output_tokens: (.output_tokens // 0)
+			}
+		else
+			empty
+		end
 	' 2>/dev/null
 }
 

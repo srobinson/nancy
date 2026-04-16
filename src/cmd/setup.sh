@@ -9,6 +9,7 @@
 declare -A NANCY_DEFAULTS_MODEL=(
 	[copilot]="claude-opus-4"
 	[claude]="sonnet"
+	[codex]="gpt-5.4"
 	[opencode]="opus"
 	[gemini]="gemini-3.0-flash"
 )
@@ -16,6 +17,7 @@ declare -A NANCY_DEFAULTS_MODEL=(
 declare -A NANCY_DEFAULTS_THRESHOLD=(
 	[copilot]="0.30"
 	[claude]="0.30"
+	[codex]="0.30"
 	[opencode]="0.30"
 	[gemini]="0.30"
 )
@@ -50,6 +52,7 @@ cmd::setup() {
 		echo "Install one of:"
 		echo "  - GitHub Copilot CLI: npm install -g @githubnext/github-copilot-cli"
 		echo "  - Claude Code: https://claude.ai/code"
+		echo "  - Codex CLI: ensure 'codex' is installed and on PATH"
 		return 1
 	fi
 
