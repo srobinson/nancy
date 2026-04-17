@@ -178,6 +178,7 @@ cli::claude::run_prompt() {
 		args+=("--print")
 		args+=("--output-format" "stream-json")
 		args+=("--include-partial-messages")
+		args+=("--verbose")
 	fi
 
 	log::debug "Running Claude with session UUID: $uuid"
