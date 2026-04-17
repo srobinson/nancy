@@ -46,7 +46,7 @@ cli::_call_optional_driver() {
 
 # Get current CLI name
 cli::current() {
-	echo "${NANCY_CLI:-copilot}"
+	echo "${NANCY_CLI:-claude}"
 }
 
 # Get CLI version
