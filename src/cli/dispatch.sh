@@ -114,3 +114,12 @@ cli::supports_export() {
 cli::extract_context_percent() {
 	cli::_call_optional_driver extract_context_percent "$@"
 }
+
+cli::handover_command() {
+	if cli::_has_driver_fn handover_command; then
+		cli::_call_driver handover_command "$@"
+		return $?
+	fi
+
+	printf '%s\n' "/session-handover"
+}

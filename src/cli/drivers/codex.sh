@@ -130,6 +130,10 @@ cli::codex::extract_context_percent() {
 	fi
 }
 
+cli::codex::handover_command() {
+	printf '%s\n' '$session-handover'
+}
+
 cli::codex::auto_approve_flag() {
 	echo "--dangerously-bypass-approvals-and-sandbox"
 }

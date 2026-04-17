@@ -221,6 +221,7 @@ sidecar::_monitor_loop() {
 	local armed_at=0
 	local handover_mtime_at_arm=0
 	local handover_active=0
+	local handover_written=0
 	last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 
 	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
@@ -262,8 +263,8 @@ sidecar::_monitor_loop() {
 		local pane_text percent
 		pane_text=$(sidecar::_capture_worker "$worker_pane")
 		if sidecar::_detect_exit_ready "$pane_text"; then
-			log::info "Worker emitted completion signal; terminating worker"
-			sidecar::_kill_worker "$task" "$worker_pane"
+			log::info "Worker emitted completion signal before arming; rotating worker"
+			sidecar::_kill_worker "$task" "$worker_pane" "completion signal before arming"
 			return 0
 		fi
 		percent=$(sidecar::_extract_context_percent "$pane_text")
@@ -308,6 +309,7 @@ sidecar::_monitor_loop() {
 					armed_at=$(date +%s)
 					handover_mtime_at_arm=$(sidecar::_file_mtime "$(sidecar::_handover_file "$task")" 2>/dev/null || echo 0)
 					handover_active=0
+					handover_written=0
 					logged_handover_grace=0
 					sidecar::_request_handover "$worker_pane"
 					log::info "Sidecar armed at ${percent}% context"
@@ -318,30 +320,43 @@ sidecar::_monitor_loop() {
 					handover_active=1
 					log::info "Handover skill activity detected; waiting for handover artifact"
 				fi
-				if sidecar::_handover_changed "$task" "$handover_mtime_at_arm"; then
-					log::info "Handover file updated; terminating worker"
-					sidecar::_kill_worker "$task" "$worker_pane"
-					return 0
+				if ((handover_written == 0)) && sidecar::_handover_changed "$task" "$handover_mtime_at_arm"; then
+					handover_written=1
+					log::info "Handover file updated; waiting for completion signal"
 				fi
 				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit"; then
 					local break_kind="$SIDECAR_BREAK_KIND"
 					last_commit="$SIDECAR_LAST_COMMIT"
 					log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
-					sidecar::_kill_worker "$task" "$worker_pane"
+					sidecar::_kill_worker "$task" "$worker_pane" "breakpoint ${break_kind}"
 					return 0
 				fi
 				if sidecar::_detect_exit_ready "$pane_text"; then
-					log::info "Worker appears ready to exit at ${percent}%; terminating worker"
-					sidecar::_kill_worker "$task" "$worker_pane"
+					if ((handover_written == 1)); then
+						log::info "Worker emitted completion signal after handover at ${percent}%; rotating worker"
+						sidecar::_kill_worker "$task" "$worker_pane" "completion signal after handover"
+					else
+						log::info "Worker emitted completion signal after arming at ${percent}%; rotating worker"
+						sidecar::_kill_worker "$task" "$worker_pane" "completion signal after arming"
+					fi
 					return 0
 				fi
 				local now handover_elapsed
 				now=$(date +%s)
 				handover_elapsed=$((now - armed_at))
+				if ((handover_written == 1)); then
+					if ((handover_elapsed >= handover_timeout_seconds)); then
+						log::warn "Completion signal not observed within ${handover_timeout_seconds}s after handover write; forcing rotation"
+						sidecar::_kill_worker "$task" "$worker_pane" "completion timeout"
+						return 0
+					fi
+					sleep "$poll_seconds"
+					continue
+				fi
 				if ((handover_active == 1)); then
 					if ((handover_elapsed >= handover_timeout_seconds)); then
-						log::warn "Handover skill exceeded ${handover_timeout_seconds}s without updating HANDOVER.md; terminating worker"
-						sidecar::_kill_worker "$task" "$worker_pane"
+						log::warn "Handover skill exceeded ${handover_timeout_seconds}s without updating HANDOVER.md; forcing rotation"
+						sidecar::_kill_worker "$task" "$worker_pane" "handover timeout"
 						return 0
 					fi
 					sleep "$poll_seconds"
@@ -356,8 +371,8 @@ sidecar::_monitor_loop() {
 					continue
 				fi
 				if ((percent >= kill_threshold)); then
-					log::warn "Kill threshold reached at ${percent}% after ${handover_elapsed}s handover grace; terminating worker"
-					sidecar::_kill_worker "$task" "$worker_pane"
+					log::warn "Kill threshold reached at ${percent}% after ${handover_elapsed}s handover grace; forcing rotation"
+					sidecar::_kill_worker "$task" "$worker_pane" "kill threshold ${percent}%"
 					return 0
 				fi
 				;;
@@ -454,32 +469,39 @@ sidecar::_inject_message() {
 
 sidecar::_request_handover() {
 	local worker_pane="$1"
+	local handover_command=""
 
 	[[ -z "$worker_pane" ]] && return 1
 
+	handover_command=$(cli::handover_command)
+	[[ -n "$handover_command" ]] || return 1
+
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
-	sidecar::_inject_message "$worker_pane" "/session-handover" || return 1
-	log::info "Injected /session-handover into $worker_pane"
+	sidecar::_inject_message "$worker_pane" "$handover_command" || return 1
+	log::info "Injected ${handover_command} into $worker_pane"
 }
 
 sidecar::_request_exit() {
 	local worker_pane="$1"
+	local reason="${2:-unknown}"
 
 	[[ -z "$worker_pane" ]] && return 1
 
+	log::info "Requesting worker exit on ${worker_pane} (reason: ${reason})"
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
 	sidecar::_inject_message "$worker_pane" "/exit" || return 1
-	log::info "Injected /exit into $worker_pane"
+	log::info "Injected /exit into ${worker_pane} (reason: ${reason})"
 }
 
 sidecar::_kill_worker() {
 	local task="$1"
 	local worker_pane="$2"
+	local reason="${3:-unspecified}"
 	local pid_file="$NANCY_TASK_DIR/$task/.worker_pid"
 	local grace_seconds="${NANCY_SIDECAR_KILL_GRACE_SECONDS:-10}"
 
-	sidecar::_request_exit "$worker_pane"
+	sidecar::_request_exit "$worker_pane" "$reason"
 	sleep "$grace_seconds"
 
 	if [[ ! -f "$pid_file" ]]; then

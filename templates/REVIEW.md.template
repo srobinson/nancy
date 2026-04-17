@@ -4,10 +4,6 @@
 **Main Session:** `{{SESSION_ID}}`
 **Iteration:** `{{ITERATION}}`
 
-## Memory Recall
-
-**At session start, call `am_query` with a summary of the parent issue.**
-
 ## Your Role
 
 You are a code review agent running after the main worker completed this iteration.
@@ -81,15 +77,6 @@ Only fall back to Grep or Read when you need function-body or non-exported detai
 4. If everything looks good:
    - Send a progress message saying review passed
    - Exit cleanly
-
-## Communication
-
-Use the Nancy messaging system:
-
-```bash
-nancy msg progress "Review completed: fixed edge case in validation logic"
-nancy msg blocker "Critical issue found that needs human review"
-```
 
 ## Quality Checks
 

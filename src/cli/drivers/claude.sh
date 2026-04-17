@@ -437,6 +437,10 @@ cli::claude::extract_context_percent() {
 	fi
 }
 
+cli::claude::handover_command() {
+	printf '%s\n' "/session-handover"
+}
+
 # Get auto-approve flag
 cli::claude::auto_approve_flag() {
 	echo "--dangerously-skip-permissions"
