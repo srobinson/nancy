@@ -104,6 +104,7 @@ If you catch yourself thinking that warnings or limits were already there before
 
 ## Exit
 
-When done, fixed issues or nothing to fix, simply exit. The main loop will continue to the next iteration.
+When done, fixed issues or nothing to fix, print <END_TURN>.
+The main loop will rotate the agent and continue to the next iteration.
 
 **Remember:** Improve the work. Do not merely critique it.

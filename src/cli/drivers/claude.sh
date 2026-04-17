@@ -151,7 +151,7 @@ cli::claude::run_interactive() {
 	env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt"
 }
 
-# Run Claude with a prompt (non-interactive)
+# Run Claude from a rendered worker prompt
 cli::claude::run_prompt() {
 	local prompt_text="$1"
 	local nancy_session_id="$2"
@@ -160,7 +160,6 @@ cli::claude::run_prompt() {
 	local agent_role="${5:-}"
 	local uuid="${6:-$(uuid::generate)}"
 	local model="${NANCY_MODEL:-}"
-	local print_mode="${NANCY_CLAUDE_PRINT_MODE:-false}"
 
 	local args=("--dangerously-skip-permissions")
 
@@ -174,12 +173,6 @@ cli::claude::run_prompt() {
 		args+=("--model" "$model")
 	fi
 	args+=("--effort" "max")
-	if [[ "$print_mode" == "true" ]]; then
-		args+=("--print")
-		args+=("--output-format" "stream-json")
-		args+=("--include-partial-messages")
-		args+=("--verbose")
-	fi
 
 	log::debug "Running Claude with session UUID: $uuid"
 
@@ -193,26 +186,11 @@ cli::claude::run_prompt() {
 	local -a claude_env
 	cli::claude::_build_env "$agent_role" claude_env
 
-	set -o pipefail
 	(
 		echo $BASHPID >"$pid_file"
-		if [[ "$print_mode" == "true" ]]; then
-			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
-		else
-			exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" \
-				--include-partial-messages --output-format stream-json --verbose --debug \
-				-p "$prompt_text"
-		fi
-	) |
-		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.log" |
-		_claude_format_stream |
-		fmt::strip_ansi |
-		tee -a "$NANCY_TASK_DIR/logs/$nancy_session_id.formatted.log" &
-	local pipeline_pid=$!
-
-	wait $pipeline_pid 2>/dev/null
+		exec env "${claude_env[@]}" "$CLAUDE_CMD" "${args[@]}" "$prompt_text"
+	)
 	local exit_code=$?
-	set +o pipefail
 
 	rm -f "$pid_file"
 
@@ -227,7 +205,7 @@ cli::claude::run_prompt() {
 }
 
 cli::claude::run_review_prompt() {
-	NANCY_CLAUDE_PRINT_MODE=true cli::claude::run_prompt "$@"
+	cli::claude::run_prompt "$@"
 }
 
 _copy_project_session() {
@@ -437,11 +415,26 @@ cli::claude::supports_sidecar() {
 }
 
 cli::claude::supports_review_agent() {
-	return 0
+	return 1
 }
 
 cli::claude::supports_agent_role() {
-	return 0
+	return 1
+}
+
+cli::claude::extract_context_percent() {
+	local pane_text="$1"
+	local match=""
+
+	match=$(
+		printf '%s\n' "$pane_text" |
+			grep -oE '\|[[:space:]]*[0-9]{1,3}%[[:space:]]*\|' |
+			tail -1 || true
+	)
+
+	if [[ -n "$match" ]]; then
+		printf '%s\n' "$match" | grep -oE '[0-9]{1,3}' | tail -1
+	fi
 }
 
 # Get auto-approve flag

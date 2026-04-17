@@ -108,6 +108,21 @@ cli::copilot::supports_export() {
 	return 0
 }
 
+cli::copilot::extract_context_percent() {
+	local pane_text="$1"
+	local match=""
+
+	match=$(
+		printf '%s\n' "$pane_text" |
+			grep -oE '[0-9]{1,3}%[[:space:]]+\|[[:space:]]+\$[0-9]+(\.[0-9]+)?' |
+			tail -1 || true
+	)
+
+	if [[ -n "$match" ]]; then
+		printf '%s\n' "${match%%%*}"
+	fi
+}
+
 # Get auto-approve flags
 cli::copilot::auto_approve_flag() {
 	echo "--allow-all-tools --allow-all-paths"

@@ -110,3 +110,7 @@ cli::supports_resume() {
 cli::supports_export() {
 	cli::_call_optional_driver supports_export
 }
+
+cli::extract_context_percent() {
+	cli::_call_optional_driver extract_context_percent "$@"
+}

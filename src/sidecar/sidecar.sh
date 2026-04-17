@@ -261,6 +261,11 @@ sidecar::_monitor_loop() {
 
 		local pane_text percent
 		pane_text=$(sidecar::_capture_worker "$worker_pane")
+		if sidecar::_detect_exit_ready "$pane_text"; then
+			log::info "Worker emitted completion signal; terminating worker"
+			sidecar::_kill_worker "$task" "$worker_pane"
+			return 0
+		fi
 		percent=$(sidecar::_extract_context_percent "$pane_text")
 
 		if [[ -z "$percent" ]]; then
@@ -374,17 +379,7 @@ sidecar::_pane_exists() {
 
 sidecar::_extract_context_percent() {
 	local pane_text="$1"
-	local match=""
-
-	match=$(
-		printf '%s\n' "$pane_text" |
-			grep -oE '[0-9]{1,3}%[[:space:]]+\|[[:space:]]+\$[0-9]+(\.[0-9]+)?' |
-			tail -1 || true
-	)
-
-	if [[ -n "$match" ]]; then
-		printf '%s\n' "${match%%%*}"
-	fi
+	cli::extract_context_percent "$pane_text"
 }
 
 sidecar::_worker_alive() {
@@ -432,7 +427,7 @@ sidecar::_detect_break_point() {
 sidecar::_detect_exit_ready() {
 	local pane_text="$1"
 
-	if printf '%s\n' "$pane_text" | grep -Eq 'Log saved:|Session summary:|^✻ Worked for'; then
+	if printf '%s\n' "$pane_text" | grep -Eq '<END_TURN>|Log saved:|Session summary:|^✻ Worked for'; then
 		return 0
 	fi
 
@@ -442,10 +437,17 @@ sidecar::_detect_exit_ready() {
 sidecar::_inject_message() {
 	local worker_pane="$1"
 	local message="$2"
+	local pane_mode=""
 
 	[[ -z "$worker_pane" || -z "$message" ]] && return 1
 
+	pane_mode=$(tmux display-message -t "$worker_pane" -p '#{pane_in_mode}' 2>/dev/null || true)
+	if [[ "$pane_mode" == "1" ]]; then
+		tmux send-keys -t "$worker_pane" -X cancel 2>/dev/null || true
+	fi
+
 	tmux send-keys -t "$worker_pane" -l "$message" 2>/dev/null || return 1
+	tmux send-keys -t "$worker_pane" -H 0d 2>/dev/null || return 1
 	tmux send-keys -t "$worker_pane" Enter 2>/dev/null || return 1
 	log::info "Injected sidecar message into $worker_pane"
 }
@@ -457,8 +459,7 @@ sidecar::_request_handover() {
 
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
-	tmux send-keys -t "$worker_pane" -l "/session-handover" 2>/dev/null || return 1
-	tmux send-keys -t "$worker_pane" Enter 2>/dev/null || return 1
+	sidecar::_inject_message "$worker_pane" "/session-handover" || return 1
 	log::info "Injected /session-handover into $worker_pane"
 }
 
@@ -468,8 +469,7 @@ sidecar::_request_exit() {
 	[[ -z "$worker_pane" ]] && return 1
 
 	tmux send-keys -t "$worker_pane" Escape 2>/dev/null || true
-	tmux send-keys -t "$worker_pane" -l "/exit" 2>/dev/null || return 1
-	tmux send-keys -t "$worker_pane" Enter 2>/dev/null || return 1
+	sidecar::_inject_message "$worker_pane" "/exit" || return 1
 	log::info "Injected /exit into $worker_pane"
 }
 
