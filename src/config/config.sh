@@ -13,7 +13,7 @@ config::load() {
 	# Config is authoritative for this project (avoids ambient exported env vars
 	# accidentally selecting the wrong CLI).
 	export NANCY_CLI=$(
-		jq -r '.cli // "copilot"' "$NANCY_CONFIG_FILE" 2>/dev/null
+		jq -r '.cli // "claude"' "$NANCY_CONFIG_FILE" 2>/dev/null
 	)
 	export NANCY_MODEL=$(
 		jq -r '.model // ""' "$NANCY_CONFIG_FILE" 2>/dev/null

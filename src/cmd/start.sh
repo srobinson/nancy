@@ -228,7 +228,12 @@ _start_run_review_agent() {
 
 	# Run review agent
 	local exit_code=0
-	NANCY_CLAUDE_PRINT_MODE=true cli::run_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "clinical-reviewer" || exit_code=$?
+	local review_agent_role=""
+	if cli::supports_agent_role; then
+		review_agent_role="clinical-reviewer"
+	fi
+
+	cli::run_review_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "$review_agent_role" || exit_code=$?
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"
@@ -279,7 +284,7 @@ cmd::start() {
 		local agent_role="${_NEXT_AGENT_ROLE:-}"
 
 		if [[ -n "$agent_role" ]]; then
-			log::info "Agent role: helioy-tools:${agent_role}"
+			log::info "Agent role: ${agent_role}"
 		fi
 
 		# Archive stale directives from previous iterations so the
@@ -354,7 +359,7 @@ The orchestrator will reassign you when your next issue is unblocked."
 		local worker_pane=""
 		local sidecar_active=0
 		local sidecar_session=""
-		if [[ -n "${TMUX:-}" ]] && sidecar::enabled; then
+		if [[ -n "${TMUX:-}" ]] && sidecar::enabled && cli::supports_sidecar; then
 			worker_pane="${TMUX_PANE:-}"
 			if [[ -z "$worker_pane" ]]; then
 				worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
@@ -373,7 +378,12 @@ The orchestrator will reassign you when your next issue is unblocked."
 		fi
 
 		local exit_code=0
-		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$agent_role" "$uuid" || exit_code=$?
+		local worker_agent_role=""
+		if cli::supports_agent_role; then
+			worker_agent_role="$agent_role"
+		fi
+
+		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
 
 		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
 		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
@@ -396,7 +406,7 @@ The orchestrator will reassign you when your next issue is unblocked."
 			# Archive worker directives before review so the review agent
 			# does not inherit stale guidance meant for the build agent.
 			comms::archive_all "$task" "worker"
-			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]; then
+			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ] && cli::supports_review_agent; then
 				_start_run_review_agent "$task" "$session_id" "$iteration" \
 					"${project[identifier]}" "${project[title]}" "${worktree[dir]}"
 			fi

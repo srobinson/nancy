@@ -178,6 +178,7 @@ cli::claude::run_prompt() {
 		args+=("--print")
 		args+=("--output-format" "stream-json")
 		args+=("--include-partial-messages")
+		args+=("--verbose")
 	fi
 
 	log::debug "Running Claude with session UUID: $uuid"
@@ -223,6 +224,10 @@ cli::claude::run_prompt() {
 	fi
 
 	return "$exit_code"
+}
+
+cli::claude::run_review_prompt() {
+	NANCY_CLAUDE_PRINT_MODE=true cli::claude::run_prompt "$@"
 }
 
 _copy_project_session() {
@@ -425,6 +430,18 @@ cli::claude::supports_resume() {
 cli::claude::supports_export() {
 	# Claude doesn't have --share flag like Copilot
 	return 1
+}
+
+cli::claude::supports_sidecar() {
+	return 0
+}
+
+cli::claude::supports_review_agent() {
+	return 0
+}
+
+cli::claude::supports_agent_role() {
+	return 0
 }
 
 # Get auto-approve flag

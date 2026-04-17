@@ -18,37 +18,65 @@ cli::detect() {
 	return 0
 }
 
+cli::_driver_name() {
+	cli::current
+}
+
+cli::_driver_fn() {
+	local cli
+	cli=$(cli::_driver_name)
+	printf 'cli::%s::%s\n' "$cli" "$1"
+}
+
+cli::_has_driver_fn() {
+	declare -F "$(cli::_driver_fn "$1")" >/dev/null
+}
+
+cli::_call_driver() {
+	"$(cli::_driver_fn "$1")" "${@:2}"
+}
+
+cli::_call_optional_driver() {
+	local fn_name="$1"
+	shift
+
+	cli::_has_driver_fn "$fn_name" || return 1
+	cli::_call_driver "$fn_name" "$@"
+}
+
 # Get current CLI name
 cli::current() {
-	echo "${NANCY_CLI:-copilot}"
+	echo "${NANCY_CLI:-claude}"
 }
 
 # Get CLI version
 cli::version() {
-	local cli
-	cli=$(cli::current)
-	"cli::${cli}::version"
+	cli::_call_driver version
 }
 
 # Run CLI with prompt
 cli::run_prompt() {
-	local cli
-	cli=$(cli::current)
-	"cli::${cli}::run_prompt" "$@"
+	cli::_call_driver run_prompt "$@"
+}
+
+# Run CLI review prompt
+cli::run_review_prompt() {
+	if cli::_has_driver_fn run_review_prompt; then
+		cli::_call_driver run_review_prompt "$@"
+		return $?
+	fi
+
+	cli::run_prompt "$@"
 }
 
 # Run CLI interactively
 cli::run_interactive() {
-	local cli
-	cli=$(cli::current)
-	"cli::${cli}::run_interactive" "$@"
+	cli::_call_driver run_interactive "$@"
 }
 
 # Get session directory
 cli::session_dir() {
-	local cli
-	cli=$(cli::current)
-	"cli::${cli}::session_dir" "$@"
+	cli::_call_driver session_dir "$@"
 }
 
 # Get session file path
@@ -60,7 +88,25 @@ cli::session_dir() {
 
 # Initialize session
 cli::init_session() {
-	local cli
-	cli=$(cli::current)
-	"cli::${cli}::init_session" "$@"
+	cli::_call_driver init_session "$@"
+}
+
+cli::supports_sidecar() {
+	cli::_call_optional_driver supports_sidecar
+}
+
+cli::supports_review_agent() {
+	cli::_call_optional_driver supports_review_agent
+}
+
+cli::supports_agent_role() {
+	cli::_call_optional_driver supports_agent_role
+}
+
+cli::supports_resume() {
+	cli::_call_optional_driver supports_resume
+}
+
+cli::supports_export() {
+	cli::_call_optional_driver supports_export
 }

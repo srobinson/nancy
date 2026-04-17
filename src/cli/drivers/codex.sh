@@ -87,6 +87,51 @@ cli::codex::run_prompt() {
 	return "$exit_code"
 }
 
+cli::codex::run_review_prompt() {
+	local prompt_text="$1"
+	local nancy_session_id="$2"
+	local export_file="$3"
+	local NANCY_TASK_DIR="$4"
+	local _agent_role="${5:-}"
+	local model="${NANCY_MODEL:-}"
+
+	local args=("exec" "review" "--json" "--dangerously-bypass-approvals-and-sandbox")
+	local log_file="${NANCY_TASK_DIR}/logs/${nancy_session_id}.log"
+	local formatted_log="${NANCY_TASK_DIR}/logs/${nancy_session_id}.formatted.log"
+	local pid_file="${NANCY_TASK_DIR}/.worker_pid"
+
+	if [[ -n "$model" ]]; then
+		args+=("--model" "$model")
+	fi
+
+	if [[ -n "$export_file" ]]; then
+		args+=("--output-last-message" "$export_file")
+	fi
+
+	log::debug "Running Codex review for session: $nancy_session_id"
+
+	mkdir -p "${NANCY_TASK_DIR}/logs"
+
+	set -o pipefail
+	(
+		echo $BASHPID >"$pid_file"
+		printf '%s\n' "$prompt_text" | exec "$CODEX_CMD" "${args[@]}" -
+	) |
+		tee -a "$log_file" |
+		_codex_format_stream |
+		fmt::strip_ansi |
+		tee -a "$formatted_log" &
+	local pipeline_pid=$!
+
+	wait $pipeline_pid 2>/dev/null
+	local exit_code=$?
+	set +o pipefail
+
+	rm -f "$pid_file"
+
+	return "$exit_code"
+}
+
 _codex_format_stream() {
 	jq --unbuffered -r '
 		def usage_summary:
@@ -108,11 +153,23 @@ _codex_format_stream() {
 }
 
 cli::codex::supports_resume() {
-	return 0
+	return 1
 }
 
 cli::codex::supports_export() {
 	return 0
+}
+
+cli::codex::supports_sidecar() {
+	return 1
+}
+
+cli::codex::supports_review_agent() {
+	return 0
+}
+
+cli::codex::supports_agent_role() {
+	return 1
 }
 
 cli::codex::auto_approve_flag() {

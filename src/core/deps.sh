@@ -6,8 +6,8 @@
 # Required dependencies
 DEPS_REQUIRED=(git jq gum tmux)
 
-# CLI tools - at least one required
-DEPS_CLI=(copilot claude codex opencode gemini)
+# Supported live-path CLI tools
+DEPS_CLI=(claude codex)
 
 # ------------------------------------------------------------------------------
 
