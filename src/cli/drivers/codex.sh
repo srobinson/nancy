@@ -87,6 +87,10 @@ cli::codex::run_prompt() {
 	return "$exit_code"
 }
 
+cli::codex::run_review_prompt() {
+	cli::codex::run_prompt "$@"
+}
+
 _codex_format_stream() {
 	jq --unbuffered -r '
 		def usage_summary:
@@ -113,6 +117,18 @@ cli::codex::supports_resume() {
 
 cli::codex::supports_export() {
 	return 0
+}
+
+cli::codex::supports_sidecar() {
+	return 1
+}
+
+cli::codex::supports_review_agent() {
+	return 0
+}
+
+cli::codex::supports_agent_role() {
+	return 1
 }
 
 cli::codex::auto_approve_flag() {
