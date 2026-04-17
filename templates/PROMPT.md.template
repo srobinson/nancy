@@ -6,10 +6,6 @@
 
 **Session:** `{{SESSION_ID}}`
 
-## Memory Recall
-
-**At session start, call `am_query` with a summary of the parent issue.**
-
 {{PROJECT_DESCRIPTION}}
 
 ## 0. Working Environment

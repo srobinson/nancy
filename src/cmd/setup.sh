@@ -6,7 +6,7 @@
 # Nancy's built-in defaults per CLI
 # Claude CLI: sonnet, haiku, opus
 declare -A NANCY_DEFAULTS_MODEL=(
-	[claude]="sonnet"
+	[claude]="opus"
 	[codex]="gpt-5.4"
 )
 
