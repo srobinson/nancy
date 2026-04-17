@@ -442,7 +442,7 @@ sidecar::_detect_break_point() {
 sidecar::_detect_exit_ready() {
 	local pane_text="$1"
 
-	if printf '%s\n' "$pane_text" | grep -Eq '<END_TURN>|Log saved:|Session summary:|^✻ Worked for'; then
+	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*<END_TURN>[[:space:]]*$|Log saved:|Session summary:|^✻ Worked for'; then
 		return 0
 	fi
 

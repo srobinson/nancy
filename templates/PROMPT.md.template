@@ -65,7 +65,7 @@ Work on one issue at a time, in list order.
 1. Use `linear-server.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
 2. Use `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`.
 3. Implement, test, commit.
-4. Complete the issue, then repeat from step 0 if token budget allows.
+4. Complete the issue.
 
 Important:
 - Only one issue may be `In Progress` at a time.
@@ -74,39 +74,17 @@ Important:
 
 ## 3. Completing an Issue
 
-All three steps are required:
+All  steps are required:
 
 1. Update Linear first: `linear-server.update_issue(id: ISSUE_ID, state: "Worker Done")`
 2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
 3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`
+4. Claude agents run "/session-handover" Codex agents run "$session-handover"
+5. When your turn is complete, print `<END_TURN>` on its own line with no surrounding text
 
 Linear state change is mandatory. The orchestrator tracks progress through Linear, not checkboxes.
 
-If the Linear MCP is unavailable:
-- Send a blocker message: `nancy msg blocker "linear-server not available. Issues completed: [list]. Please update Linear states."`
-- Continue working on the next issue.
-
-If you are ending a session mid issue:
-- Commit your progress with clear handover notes.
-- Leave Linear state as `In Progress`.
-
-## 4. Communication
-
-If you need more information, get stuck, report status, or respond to the orchestrator, use:
-
-```bash
-nancy msg <msg_type> <message> <priority>
-```
-
-Examples:
-
-```bash
-nancy msg progress "Status update here"
-nancy msg blocker "Describe what is blocking you"
-nancy msg review-request "Ready for review"
-```
-
-## 5. Quality
+## 4. Quality
 
 Always use `just` commands, not raw `cargo`, `npm`, or `make`.
 
@@ -127,17 +105,11 @@ Common traps:
 - "The LSP errors are just worktree config issues." If you cannot run `just check` cleanly, stop and fix it.
 - "The code is structurally correct." The type checker decides that, not you.
 
-If the quality gate cannot pass for reasons outside your control, send a blocker:
-
-```bash
-nancy msg blocker "just check fails: <reason>. Cannot verify changes."
-```
-
 Do not commit unverified code.
 
 Linear is the source of truth over any Todo list or local checklist.
 
-## 6. {{PROJECT_IDENTIFIER}} Completion
+## 5. {{PROJECT_IDENTIFIER}} Completion
 
 Before marking the task complete, verify all of:
 
