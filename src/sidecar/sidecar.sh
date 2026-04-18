@@ -201,6 +201,7 @@ sidecar::_monitor_loop() {
 	local poll_seconds="${NANCY_SIDECAR_POLL_SECONDS:-10}"
 	local bootstrap_retries="${NANCY_SIDECAR_BOOTSTRAP_RETRIES:-10}"
 	local bootstrap_sleep_seconds="${NANCY_SIDECAR_BOOTSTRAP_SLEEP_SECONDS:-1}"
+	local startup_completion_grace_seconds="${NANCY_SIDECAR_STARTUP_COMPLETION_GRACE_SECONDS:-8}"
 	local armed_threshold="${NANCY_SIDECAR_ARMED_THRESHOLD:-70}"
 	local kill_threshold="${NANCY_SIDECAR_KILL_THRESHOLD:-75}"
 	local handover_grace_seconds="${NANCY_SIDECAR_HANDOVER_GRACE_SECONDS:-45}"
@@ -216,15 +217,17 @@ sidecar::_monitor_loop() {
 	local logged_worker_ready=0
 	local logged_context_visible=0
 	local logged_handover_grace=0
+	local logged_startup_completion_suppressed=0
 	local last_percent=""
 	local consecutive_capture_failures=0
 	local armed_at=0
 	local handover_mtime_at_arm=0
 	local handover_active=0
 	local handover_written=0
+	local worker_detected_at=0
 	last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 
-	log::info "Watching worker pane $worker_pane for task $task (arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
+	log::info "Watching worker pane $worker_pane for task $task (startup-completion-grace=${startup_completion_grace_seconds}s arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
 
 	while true; do
 		if ! sidecar::_pane_exists "$worker_pane"; then
@@ -258,14 +261,26 @@ sidecar::_monitor_loop() {
 		if ((logged_worker_ready == 0)); then
 			log::info "Worker process detected for task $task on pane $worker_pane"
 			logged_worker_ready=1
+			worker_detected_at=$(date +%s)
+			logged_startup_completion_suppressed=0
 		fi
 
 		local pane_text percent
 		pane_text=$(sidecar::_capture_worker "$worker_pane")
 		if sidecar::_detect_exit_ready "$pane_text"; then
+			local now startup_age
+			now=$(date +%s)
+			startup_age=$((now - worker_detected_at))
+			if ((worker_detected_at > 0 && startup_age < startup_completion_grace_seconds)); then
+				if ((logged_startup_completion_suppressed == 0)); then
+					log::debug "Completion marker seen ${startup_age}s after worker start; ignoring probable stale pane output"
+					logged_startup_completion_suppressed=1
+				fi
+			else
 			log::info "Worker emitted completion signal before arming; rotating worker"
 			sidecar::_kill_worker "$task" "$worker_pane" "completion signal before arming"
 			return 0
+			fi
 		fi
 		percent=$(sidecar::_extract_context_percent "$pane_text")
 
@@ -442,7 +457,7 @@ sidecar::_detect_break_point() {
 sidecar::_detect_exit_ready() {
 	local pane_text="$1"
 
-	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*<END_TURN>[[:space:]]*$|Log saved:|Session summary:|^✻ Worked for'; then
+	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*[>•*-]?[[:space:]]*<END_TURN>[[:space:]]*$|Log saved:|Session summary:|^✻ Worked for'; then
 		return 0
 	fi
 
@@ -500,6 +515,34 @@ sidecar::_kill_worker() {
 	local reason="${3:-unspecified}"
 	local pid_file="$NANCY_TASK_DIR/$task/.worker_pid"
 	local grace_seconds="${NANCY_SIDECAR_KILL_GRACE_SECONDS:-10}"
+	local worker_pid
+
+	if [[ ! -f "$pid_file" ]]; then
+		log::info "Worker already exited before termination path ran"
+		return 0
+	fi
+
+	worker_pid=$(cat "$pid_file" 2>/dev/null)
+
+	if [[ -z "$worker_pid" ]] || ! kill -0 "$worker_pid" 2>/dev/null; then
+		log::info "Worker already exited before termination path ran"
+		return 0
+	fi
+
+	# After <END_TURN>, Codex can leave the marker in the input buffer.
+	# Typing another command appends to that stale prompt text, so exit cleanly
+	# by terminating the worker process directly for completion-driven rotation.
+	if [[ "$reason" == completion\ signal* ]]; then
+		log::info "Completion signal acknowledged; sending SIGTERM to worker pid ${worker_pid}"
+		kill "$worker_pid" 2>/dev/null || true
+		sleep 2
+		if kill -0 "$worker_pid" 2>/dev/null; then
+			kill -9 "$worker_pid" 2>/dev/null || true
+			log::warn "Worker required SIGKILL after completion signal"
+		fi
+		rm -f "$pid_file" 2>/dev/null || true
+		return 0
+	fi
 
 	sidecar::_request_exit "$worker_pane" "$reason"
 	sleep "$grace_seconds"
@@ -509,7 +552,6 @@ sidecar::_kill_worker() {
 		return 0
 	fi
 
-	local worker_pid
 	worker_pid=$(cat "$pid_file" 2>/dev/null)
 
 	if [[ -z "$worker_pid" ]] || ! kill -0 "$worker_pid" 2>/dev/null; then

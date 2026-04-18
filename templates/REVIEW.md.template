@@ -89,9 +89,17 @@ If quality checks fail, fix the issues and commit the fixes.
 
 If you catch yourself thinking that warnings or limits were already there before your change, that is not acceptable. If a file you touched grew past the limit, bring it back down before finishing.
 
+## Commit changes and session-handover:
+
+
+1. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`
+Only perform this step if you received a clean branch. If the issue is not complete do not perform this step
+2. Call "session-handover" skill. Claude agents print "/session-handover" Codex agents print "$session-handover"
+Always perform this step for the workflow continuation
+
 ## Exit
 
-When done, fixed issues or nothing to fix, print `<END_TURN>` on its own line with no surrounding text.
+When done, "exit" out of the tui
 The main loop will rotate the agent and continue to the next iteration.
 
 **Remember:** Improve the work. Do not merely critique it.

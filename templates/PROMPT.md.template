@@ -79,8 +79,8 @@ All  steps are required:
 1. Update Linear first: `linear-server.update_issue(id: ISSUE_ID, state: "Worker Done")`
 2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`
 3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`
-4. Claude agents run "/session-handover" Codex agents run "$session-handover"
-5. When your turn is complete, print `<END_TURN>` on its own line with no surrounding text
+4. Call "session-handover" skill. Claude agents print "/session-handover" Codex agents print "$session-handover"
+5. After completing session-handover, print `<END_TURN>` on its own line with no surrounding text
 
 Linear state change is mandatory. The orchestrator tracks progress through Linear, not checkboxes.
 
