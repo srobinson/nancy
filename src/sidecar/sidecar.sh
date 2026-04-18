@@ -12,6 +12,41 @@ sidecar::session_file() {
 	echo "$NANCY_TASK_DIR/$task/.sidecar_session"
 }
 
+sidecar::completion_file() {
+	local task="$1"
+	echo "$NANCY_TASK_DIR/$task/.worker_completed"
+}
+
+sidecar::mark_completion() {
+	local task="$1"
+	local completion_file
+
+	[[ -z "$task" ]] && return 1
+
+	completion_file=$(sidecar::completion_file "$task")
+	printf '%s\n' "$(date -Iseconds)" >"$completion_file"
+}
+
+sidecar::clear_completion() {
+	local task="$1"
+	local completion_file
+
+	[[ -z "$task" ]] && return 1
+
+	completion_file=$(sidecar::completion_file "$task")
+	rm -f "$completion_file" 2>/dev/null || true
+}
+
+sidecar::completion_marked() {
+	local task="$1"
+	local completion_file
+
+	[[ -z "$task" ]] && return 1
+
+	completion_file=$(sidecar::completion_file "$task")
+	[[ -f "$completion_file" ]]
+}
+
 sidecar::safe_fragment() {
 	local value="$1"
 
@@ -533,6 +568,7 @@ sidecar::_kill_worker() {
 	# Typing another command appends to that stale prompt text, so exit cleanly
 	# by terminating the worker process directly for completion-driven rotation.
 	if [[ "$reason" == completion\ signal* ]]; then
+		sidecar::mark_completion "$task"
 		log::info "Completion signal acknowledged; sending SIGTERM to worker pid ${worker_pid}"
 		kill "$worker_pid" 2>/dev/null || true
 		sleep 2

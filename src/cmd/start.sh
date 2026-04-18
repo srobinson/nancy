@@ -15,9 +15,9 @@ _start_cleanup() {
 		_NANCY_CURRENT_SIDECAR_SESSION=""
 		# Kill Claude subprocess first
 		local pid_file="$NANCY_TASK_DIR/$_NANCY_CURRENT_TASK/.worker_pid"
-		if [[ -f "$pid_file" ]]; then
-			local worker_pid
-			worker_pid=$(cat "$pid_file")
+			if [[ -f "$pid_file" ]]; then
+				local worker_pid
+				worker_pid=$(cat "$pid_file")
 			if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
 				# SIGTERM first for graceful shutdown
 				kill "$worker_pid" 2>/dev/null || true
@@ -26,12 +26,13 @@ _start_cleanup() {
 				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
 			fi
 			rm -f "$pid_file"
+			fi
+			# Clean up sentinel
+			rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
+			sidecar::clear_completion "$_NANCY_CURRENT_TASK" 2>/dev/null || true
+			notify::stop_all_watchers "$_NANCY_CURRENT_TASK" 2>/dev/null || true
 		fi
-		# Clean up sentinel
-		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
-		notify::stop_all_watchers "$_NANCY_CURRENT_TASK" 2>/dev/null || true
-	fi
-	exit 0
+		exit 0
 }
 
 # Helper: Fetch Linear issue context
@@ -229,11 +230,40 @@ _start_run_review_agent() {
 	# Run review agent
 	local exit_code=0
 	local review_agent_role=""
+	local sidecar_log="$NANCY_CURRENT_TASK_DIR/logs/sidecar.log"
+	local review_pane=""
+	local review_sidecar_active=0
+	local review_sidecar_session=""
+	local review_uuid
 	if cli::supports_agent_role; then
 		review_agent_role="clinical-reviewer"
 	fi
 
+	sidecar::clear_completion "$task" 2>/dev/null || true
+	review_uuid=$(uuid::generate)
+	if [[ -n "${TMUX:-}" ]] && sidecar::enabled && cli::supports_sidecar; then
+		review_pane="${TMUX_PANE:-}"
+		if [[ -z "$review_pane" ]]; then
+			review_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
+		fi
+		echo "[$(date -Iseconds)] preparing review sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$review_uuid" >>"$sidecar_log"
+		echo "[$(date -Iseconds)] review sidecar candidate pane: ${review_pane:-<empty>}" >>"$sidecar_log"
+		if sidecar::spawn_bg "$task" "$review_uuid" "$review_pane" "$worktree_dir" >>"$sidecar_log" 2>&1; then
+			review_sidecar_active=1
+			review_sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
+			echo "[$(date -Iseconds)] review sidecar spawn invoked: ${review_sidecar_session:-<unknown>}" >>"$sidecar_log"
+		else
+			echo "[$(date -Iseconds)] review sidecar spawn failed" >>"$sidecar_log"
+		fi
+	fi
+
 	cli::run_review_prompt "$review_prompt" "$review_session_id" "$review_session_file" "$NANCY_CURRENT_TASK_DIR" "$review_agent_role" || exit_code=$?
+	((review_sidecar_active == 1)) && sidecar::stop "$task" "$review_sidecar_session"
+	if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
+		log::info "Review exit normalized to success after completion-driven rotation"
+		exit_code=0
+	fi
+	sidecar::clear_completion "$task" 2>/dev/null || true
 
 	if [[ $exit_code -eq 0 ]]; then
 		ui::success "Code review completed"
@@ -256,6 +286,12 @@ cmd::start() {
 	# Store task globally for cleanup
 	_NANCY_CURRENT_TASK="$task"
 	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
+	local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
+
+	# A previous run may have left behind a STOP sentinel. Clear it before
+	# starting a fresh loop so stale manual stop requests do not terminate the
+	# new worker immediately after its first successful rotation.
+	rm -f "$stop_file" 2>/dev/null || true
 
 	# Fetch Linear context
 	declare -A project
@@ -287,13 +323,14 @@ cmd::start() {
 			log::info "Agent role: ${agent_role}"
 		fi
 
-		# Archive stale directives from previous iterations so the
-		# incoming worker session starts with an empty inbox.
-		comms::archive_all "$task" "worker"
-		comms::archive_all "$task" "orchestrator"
-		iteration=$((iteration + 1))
-		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
-		local session_id=$(session::id "$task" "$iteration")
+			# Archive stale directives from previous iterations so the
+			# incoming worker session starts with an empty inbox.
+			comms::archive_all "$task" "worker"
+			comms::archive_all "$task" "orchestrator"
+			sidecar::clear_completion "$task" 2>/dev/null || true
+			iteration=$((iteration + 1))
+			local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+			local session_id=$(session::id "$task" "$iteration")
 		local session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}.md"
 
 		session::init "$task" "$iteration"
@@ -383,18 +420,22 @@ The orchestrator will reassign you when your next issue is unblocked."
 			worker_agent_role="$agent_role"
 		fi
 
-		cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
+			cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
 
-		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
-		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
-			_NANCY_CURRENT_SIDECAR_SESSION=""
-		fi
+			((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
+			if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
+				_NANCY_CURRENT_SIDECAR_SESSION=""
+			fi
+			if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
+				log::info "Worker exit normalized to success after completion-driven rotation"
+				exit_code=0
+			fi
+			sidecar::clear_completion "$task" 2>/dev/null || true
 
-		# Check for stop sentinel (written by `nancy stop`)
-		local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
-		if [[ -f "$stop_file" ]]; then
-			log::info "Stop requested. Exiting worker loop."
-			rm -f "$stop_file"
+			# Check for stop sentinel (written by `nancy stop`)
+			if [[ -f "$stop_file" ]]; then
+				log::info "Stop requested. Exiting worker loop."
+				rm -f "$stop_file"
 			notify::stop_all_watchers "$task" 2>/dev/null || true
 			return 0
 		fi

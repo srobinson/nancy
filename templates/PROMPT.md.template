@@ -22,14 +22,6 @@ These are two distinct paths. The worktree contains your code. The task director
 
 Use `git log --format=full -3` to understand recent changes and context from previous iterations.
 
-## 0.1 Code Navigation
-
-If `.fmm.db` exists in the project root:
-1. Run `fmm generate` to update the index.
-2. fmm MCP tools are available. Use them for code navigation instead of Grep or broad file reads.
-
-Only fall back to Search, Grep, or Read when you need non-structural details.
-
 ## Collaboration Model
 
 **You are one worker in a relay team.** Tasks often span multiple sessions.

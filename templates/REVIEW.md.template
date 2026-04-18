@@ -34,26 +34,20 @@ Review scope:
 **Working in:** `{{WORKTREE_DIR}}`
 **Branch:** `nancy/{{TASK_NAME}}`
 
+## Branch State Policy
+
+Before making any changes, capture the initial branch state with `git status --short`.
+
+- If the initial branch state is clean, you may commit review fixes.
+- If the initial branch state is dirty, assume the previous worker was interrupted. You may still fix issues, but do not commit anything. Leave all reviewer changes uncommitted and document them in the handover.
+
+This rule is based on the branch state at the start of the review, not after your edits.
+
 **Recent work (last 5 commits):**
 
 ```text
 {{GIT_LOG}}
 ```
-
-## Code Navigation
-
-If `.fmm.db` exists in the project root, use fmm MCP tools for structural code navigation.
-
-Useful tools:
-- `fmm_read_symbol(name)`
-- `fmm_lookup_export(name)`
-- `fmm_file_outline(file)`
-- `fmm_list_files(path)`
-- `fmm_list_exports(pattern)`
-- `fmm_dependency_graph(file)`
-- `fmm_glossary(pattern)`
-
-Only fall back to Grep or Read when you need function-body or non-exported details.
 
 ## Review Process
 
@@ -72,7 +66,8 @@ Only fall back to Grep or Read when you need function-body or non-exported detai
    - Inconsistent patterns
 3. If issues are found:
    - Fix them directly
-   - Commit with `review[{{TASK_NAME}}]: <fix description>`
+   - If the branch was initially clean, commit with `review[{{TASK_NAME}}]: <fix description>`
+   - If the branch was initially dirty, do not commit. Record the reviewer changes in `HANDOVER.md`
    - Send a progress message summarizing the fix
 4. If everything looks good:
    - Send a progress message saying review passed
@@ -85,21 +80,28 @@ Before finishing, verify:
 - `just build` succeeds if available
 - `just test` passes if available
 
-If quality checks fail, fix the issues and commit the fixes.
+If quality checks fail, fix the issues. Commit those fixes only when the branch was initially clean.
+
+Commit only when the branch was initially clean. If the branch was initially dirty, fix what you can and leave the changes for the next worker without creating a review commit.
 
 If you catch yourself thinking that warnings or limits were already there before your change, that is not acceptable. If a file you touched grew past the limit, bring it back down before finishing.
 
-## Commit changes and session-handover:
+## Handover Policy
 
+Update `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md` as the final handover step for the review.
 
-1. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`
-Only perform this step if you received a clean branch. If the issue is not complete do not perform this step
-2. Call "session-handover" skill. Claude agents print "/session-handover" Codex agents print "$session-handover"
-Always perform this step for the workflow continuation
+1. Open `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md`.
+2. If the file does not exist yet, create it.
+3. Add a new reviewer section at the end with your session id and date.
+4. Summarize the review outcome.
+5. If the branch started dirty and you made reviewer changes, list those uncommitted changes and explain why they were left for the next worker.
+6. If the branch started clean and you made a review commit, record the commit sha and any follow up concerns.
+7. Leave all existing handover content in place and preserve chronological order.
 
 ## Exit
 
-When done, "exit" out of the tui
+As the final action, print `<END_TURN>` on its own line with no surrounding text.
+
 The main loop will rotate the agent and continue to the next iteration.
 
 **Remember:** Improve the work. Do not merely critique it.
