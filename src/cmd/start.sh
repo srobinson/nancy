@@ -248,7 +248,7 @@ _start_run_review_agent() {
 		fi
 		echo "[$(date -Iseconds)] preparing review sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$review_uuid" >>"$sidecar_log"
 		echo "[$(date -Iseconds)] review sidecar candidate pane: ${review_pane:-<empty>}" >>"$sidecar_log"
-		if sidecar::spawn_bg "$task" "$review_uuid" "$review_pane" "$worktree_dir" >>"$sidecar_log" 2>&1; then
+		if sidecar::spawn_bg "$task" "$review_uuid" "$review_pane" "$worktree_dir" "review" >>"$sidecar_log" 2>&1; then
 			review_sidecar_active=1
 			review_sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
 			echo "[$(date -Iseconds)] review sidecar spawn invoked: ${review_sidecar_session:-<unknown>}" >>"$sidecar_log"

@@ -133,6 +133,7 @@ sidecar::spawn_bg() {
 	local uuid="$2"
 	local worker_pane="$3"
 	local worktree_dir="$4"
+	local mode="${5:-worker}"
 
 	[[ -z "$task" || -z "$uuid" || -z "$worker_pane" || -z "$worktree_dir" ]] && return 1
 	sidecar::enabled || return 0
@@ -148,7 +149,7 @@ sidecar::spawn_bg() {
 	: >"$runtime_log"
 
 	tmux new-session -d -s "$session_name" -c "$NANCY_PROJECT_ROOT" \
-		"bash -c '$NANCY_FRAMEWORK_ROOT/nancy _sidecar \"$task\" \"$uuid\" \"$worker_pane\" \"$worktree_dir\" >>\"$runtime_log\" 2>&1'" ||
+		"bash -c '$NANCY_FRAMEWORK_ROOT/nancy _sidecar \"$task\" \"$uuid\" \"$worker_pane\" \"$worktree_dir\" \"$mode\" >>\"$runtime_log\" 2>&1'" ||
 		return 1
 	sidecar::remember_session "$task" "$session_name"
 	log::info "Spawned sidecar session: $session_name"
@@ -185,13 +186,14 @@ sidecar::run() {
 	local _uuid="$2"
 	local worker_pane="$3"
 	local worktree_dir="$4"
+	local mode="${5:-worker}"
 
 	if [[ -z "$task" || -z "$worker_pane" || -z "$worktree_dir" ]]; then
 		log::error "Usage: nancy _sidecar <task> <uuid> <worker_pane> <worktree_dir>"
 		return 1
 	fi
 
-	sidecar::_monitor_loop "$task" "$worker_pane" "$worktree_dir"
+	sidecar::_monitor_loop "$task" "$worker_pane" "$worktree_dir" "$mode"
 }
 
 sidecar::_handover_file() {
@@ -232,6 +234,7 @@ sidecar::_monitor_loop() {
 	local task="$1"
 	local worker_pane="$2"
 	local worktree_dir="$3"
+	local mode="${4:-worker}"
 
 	local poll_seconds="${NANCY_SIDECAR_POLL_SECONDS:-10}"
 	local bootstrap_retries="${NANCY_SIDECAR_BOOTSTRAP_RETRIES:-10}"
@@ -262,7 +265,7 @@ sidecar::_monitor_loop() {
 	local worker_detected_at=0
 	last_commit=$(git -C "$worktree_dir" rev-parse HEAD 2>/dev/null || echo "")
 
-	log::info "Watching worker pane $worker_pane for task $task (startup-completion-grace=${startup_completion_grace_seconds}s arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
+	log::info "Watching ${mode} pane $worker_pane for task $task (startup-completion-grace=${startup_completion_grace_seconds}s arm@${armed_threshold}% kill@${kill_threshold}% handover-grace=${handover_grace_seconds}s handover-timeout=${handover_timeout_seconds}s)"
 
 	while true; do
 		if ! sidecar::_pane_exists "$worker_pane"; then
@@ -374,7 +377,7 @@ sidecar::_monitor_loop() {
 					handover_written=1
 					log::info "Handover file updated; waiting for completion signal"
 				fi
-				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit"; then
+				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit" "$mode"; then
 					local break_kind="$SIDECAR_BREAK_KIND"
 					last_commit="$SIDECAR_LAST_COMMIT"
 					log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
@@ -465,9 +468,14 @@ sidecar::_detect_break_point() {
 	local worker_pane="$1"
 	local worktree_dir="$2"
 	local last_commit="$3"
+	local mode="${4:-worker}"
 
 	SIDECAR_BREAK_KIND=""
 	SIDECAR_LAST_COMMIT="$last_commit"
+
+	if [[ "$mode" != "worker" ]]; then
+		return 1
+	fi
 
 	# TODO: Re-enable commit-based breakpoints if we can make them more reliable. This triggers on git add
 	# local current_commit

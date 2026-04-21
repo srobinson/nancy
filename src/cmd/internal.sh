@@ -164,8 +164,9 @@ cmd::_sidecar() {
 	local uuid="$2"
 	local worker_pane="$3"
 	local worktree_dir="$4"
+	local mode="${5:-worker}"
 
-	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir"
+	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir" "$mode"
 }
 # Inbox pane - watch for bidirectional messages
 cmd::_logs() {
