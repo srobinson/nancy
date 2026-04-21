@@ -165,6 +165,13 @@ cmd::_sidecar() {
 	local worker_pane="$3"
 	local worktree_dir="$4"
 	local mode="${5:-worker}"
+	local agent_config_role="$mode"
+
+	if [[ "$agent_config_role" == "review" ]]; then
+		agent_config_role="reviewer"
+	fi
+
+	config::apply_agent "$task" "$agent_config_role"
 
 	sidecar::run "$task" "$uuid" "$worker_pane" "$worktree_dir" "$mode"
 }

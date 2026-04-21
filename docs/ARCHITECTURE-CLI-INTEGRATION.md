@@ -528,10 +528,20 @@ Skills live in the Nancy framework but are deployed to CLI-specific locations.
 
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "cli": "claude",
   "model": "opus",
   "token_threshold": 0.5,
+  "agents": {
+    "worker": {
+      "cli": "codex",
+      "model": "gpt-5.4"
+    },
+    "reviewer": {
+      "cli": "claude",
+      "model": "opus"
+    }
+  },
   "deployment": {
     "hooks_deployed": true,
     "hooks_version": "1.0.0",

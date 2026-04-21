@@ -415,7 +415,7 @@ cli::claude::supports_sidecar() {
 }
 
 cli::claude::supports_review_agent() {
-	return 1
+	return 0
 }
 
 cli::claude::supports_agent_role() {

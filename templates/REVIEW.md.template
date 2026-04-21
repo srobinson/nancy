@@ -34,6 +34,10 @@ Review scope:
 **Working in:** `{{WORKTREE_DIR}}`
 **Branch:** `nancy/{{TASK_NAME}}`
 
+## Session Continuation
+
+Check to see if previous agent left you a handover message `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md`
+
 ## Branch State Policy
 
 Before making any changes, capture the initial branch state with `git status --short`.
@@ -66,11 +70,10 @@ This rule is based on the branch state at the start of the review, not after you
    - Inconsistent patterns
 3. If issues are found:
    - Fix them directly
+   - look for more issues
+5. When everything looks good:
    - If the branch was initially clean, commit with `review[{{TASK_NAME}}]: <fix description>`
    - If the branch was initially dirty, do not commit. Record the reviewer changes in `HANDOVER.md`
-   - Send a progress message summarizing the fix
-4. If everything looks good:
-   - Send a progress message saying review passed
    - Exit cleanly
 
 ## Quality Checks
@@ -100,7 +103,7 @@ Update `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md` as the final handover step for t
 
 ## Exit
 
-As the final action, print `<END_TURN>` on its own line with no surrounding text.
+As the final action, print `` `<END_TURN>` `` on its own line with no surrounding text.
 
 The main loop will rotate the agent and continue to the next iteration.
 

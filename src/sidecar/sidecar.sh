@@ -502,6 +502,8 @@ sidecar::_detect_exit_ready() {
 
 	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*[>•*-]?[[:space:]]*<END_TURN>[[:space:]]*$|Log saved:|Session summary:|^✻ Worked for'; then
 		return 0
+	elif printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*[>•*-]?[[:space:]]*`<END_TURN>`[[:space:]]*$'; then
+		return 0
 	fi
 
 	return 1

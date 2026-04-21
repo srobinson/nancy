@@ -15,9 +15,9 @@ _start_cleanup() {
 		_NANCY_CURRENT_SIDECAR_SESSION=""
 		# Kill Claude subprocess first
 		local pid_file="$NANCY_TASK_DIR/$_NANCY_CURRENT_TASK/.worker_pid"
-			if [[ -f "$pid_file" ]]; then
-				local worker_pid
-				worker_pid=$(cat "$pid_file")
+		if [[ -f "$pid_file" ]]; then
+			local worker_pid
+			worker_pid=$(cat "$pid_file")
 			if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
 				# SIGTERM first for graceful shutdown
 				kill "$worker_pid" 2>/dev/null || true
@@ -26,13 +26,13 @@ _start_cleanup() {
 				kill -0 "$worker_pid" 2>/dev/null && kill -9 "$worker_pid" 2>/dev/null || true
 			fi
 			rm -f "$pid_file"
-			fi
-			# Clean up sentinel
-			rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
-			sidecar::clear_completion "$_NANCY_CURRENT_TASK" 2>/dev/null || true
-			notify::stop_all_watchers "$_NANCY_CURRENT_TASK" 2>/dev/null || true
 		fi
-		exit 0
+		# Clean up sentinel
+		rm -f "${NANCY_TASK_DIR}/${_NANCY_CURRENT_TASK}/STOP" 2>/dev/null || true
+		sidecar::clear_completion "$_NANCY_CURRENT_TASK" 2>/dev/null || true
+		notify::stop_all_watchers "$_NANCY_CURRENT_TASK" 2>/dev/null || true
+	fi
+	exit 0
 }
 
 # Helper: Fetch Linear issue context
@@ -50,10 +50,10 @@ _start_fetch_linear_context() {
 	fi
 
 	{
-		read -r -d '' _project_data[id]
-		read -r -d '' _project_data[identifier]
-		read -r -d '' _project_data[title]
-		read -r -d '' _project_data[description]
+		read -r -d '' _project_data["id"]
+		read -r -d '' _project_data["identifier"]
+		read -r -d '' _project_data["title"]
+		read -r -d '' _project_data["description"]
 	} < <(jq -j '.data.issue |
 		.id, "\u0000",
 		.identifier, "\u0000",
@@ -62,7 +62,7 @@ _start_fetch_linear_context() {
 	' <<<"$parent_issue")
 
 	# Update Linear status
-	linear::issue:update:status "${_project_data[id]}" "In Progress"
+	linear::issue:update:status "${_project_data["id"]}" "In Progress"
 }
 
 # Helper: Create ISSUES.md file
@@ -304,9 +304,26 @@ cmd::start() {
 	# Setup signal handler
 	trap _start_cleanup SIGINT SIGTERM
 
+	local worker_cli
+	local worker_model
+	local reviewer_cli
+	local reviewer_model
+	worker_cli=$(config::get_agent "$task" "worker" "cli" "$(cli::current)")
+	worker_model=$(config::get_agent "$task" "worker" "model" "${NANCY_MODEL:-}")
+	reviewer_cli=$(config::get_agent "$task" "reviewer" "cli" "$worker_cli")
+	reviewer_model=$(config::get_agent "$task" "reviewer" "model" "$worker_model")
+
+	if ! deps::exists "$worker_cli"; then
+		log::error "Worker CLI not found: $worker_cli"
+		return 1
+	fi
+
 	# Show start info
 	ui::header "🔄 Starting Nancy: $task"
-	log::info "CLI: $(cli::current) $(cli::version)"
+	log::info "Worker CLI: ${worker_cli}${worker_model:+ ($worker_model)}"
+	if [[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]]; then
+		log::info "Reviewer CLI: ${reviewer_cli}${reviewer_model:+ ($reviewer_model)}"
+	fi
 	log::info "Press Ctrl+C to stop"
 	echo ""
 
@@ -323,14 +340,14 @@ cmd::start() {
 			log::info "Agent role: ${agent_role}"
 		fi
 
-			# Archive stale directives from previous iterations so the
-			# incoming worker session starts with an empty inbox.
-			comms::archive_all "$task" "worker"
-			comms::archive_all "$task" "orchestrator"
-			sidecar::clear_completion "$task" 2>/dev/null || true
-			iteration=$((iteration + 1))
-			local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
-			local session_id=$(session::id "$task" "$iteration")
+		# Archive stale directives from previous iterations so the
+		# incoming worker session starts with an empty inbox.
+		comms::archive_all "$task" "worker"
+		comms::archive_all "$task" "orchestrator"
+		sidecar::clear_completion "$task" 2>/dev/null || true
+		iteration=$((iteration + 1))
+		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+		local session_id=$(session::id "$task" "$iteration")
 		local session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}.md"
 
 		session::init "$task" "$iteration"
@@ -345,22 +362,11 @@ cmd::start() {
 		# Build agent role section (empty if no role specified)
 		local agent_role_section=""
 		if [[ -n "$agent_role" ]]; then
-			agent_role_section="## Agent Role Constraint
+			agent_role_section="## Agent Recycling Rules
 
-You have been assigned this task because you are a **\`${agent_role}\`** specialist. Other specialists are working in parallel on their own issues. The Tags column in ISSUES.md identifies which specialist owns each issue.
+1. Only work on one issue at a time. Once complete, end your turn
 
-### Rules
-
-1. **Sequence is critical.** Work on issues in the order they appear in ISSUES.md. Never skip ahead.
-2. **Only work on issues tagged \`${agent_role}\`.** When the next issue in sequence is not tagged \`${agent_role}\`, you have reached the end of your current work. Write a handover commit and end your turn.
-3. **The quality gate will discard unauthorized work.** Any changes to issues owned by another specialist will be automatically reverted. Do not attempt them.
-
-When you reach an issue that belongs to another specialist:
-1. Commit your progress with a detailed handover message
-2. Send a progress message: \`nancy msg progress \"Completed [issues]. Next issue [ID] is owned by [role]. Handing off.\"\`
-3. **End your session immediately.** Do NOT write to the COMPLETE file. Do NOT perform memory updates, cleanup, or any other work. Your final message must be your handoff summary.
-
-The orchestrator will reassign you when your next issue is unblocked."
+The orchestrator will assign the next issue."
 		fi
 
 		# Render main prompt (direct substitution matching orchestrator pattern)
@@ -396,7 +402,7 @@ The orchestrator will reassign you when your next issue is unblocked."
 		local worker_pane=""
 		local sidecar_active=0
 		local sidecar_session=""
-		if [[ -n "${TMUX:-}" ]] && sidecar::enabled && cli::supports_sidecar; then
+		if [[ -n "${TMUX:-}" ]] && sidecar::enabled && config::with_agent_env "$task" "worker" cli::supports_sidecar; then
 			worker_pane="${TMUX_PANE:-}"
 			if [[ -z "$worker_pane" ]]; then
 				worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
@@ -416,26 +422,26 @@ The orchestrator will reassign you when your next issue is unblocked."
 
 		local exit_code=0
 		local worker_agent_role=""
-		if cli::supports_agent_role; then
+		if config::with_agent_env "$task" "worker" cli::supports_agent_role; then
 			worker_agent_role="$agent_role"
 		fi
 
-			cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
+		config::with_agent_env "$task" "worker" cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
 
-			((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
-			if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
-				_NANCY_CURRENT_SIDECAR_SESSION=""
-			fi
-			if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
-				log::info "Worker exit normalized to success after completion-driven rotation"
-				exit_code=0
-			fi
-			sidecar::clear_completion "$task" 2>/dev/null || true
+		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
+		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
+			_NANCY_CURRENT_SIDECAR_SESSION=""
+		fi
+		if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
+			log::info "Worker exit normalized to success after completion-driven rotation"
+			exit_code=0
+		fi
+		sidecar::clear_completion "$task" 2>/dev/null || true
 
-			# Check for stop sentinel (written by `nancy stop`)
-			if [[ -f "$stop_file" ]]; then
-				log::info "Stop requested. Exiting worker loop."
-				rm -f "$stop_file"
+		# Check for stop sentinel (written by `nancy stop`)
+		if [[ -f "$stop_file" ]]; then
+			log::info "Stop requested. Exiting worker loop."
+			rm -f "$stop_file"
 			notify::stop_all_watchers "$task" 2>/dev/null || true
 			return 0
 		fi
@@ -447,9 +453,15 @@ The orchestrator will reassign you when your next issue is unblocked."
 			# Archive worker directives before review so the review agent
 			# does not inherit stale guidance meant for the build agent.
 			comms::archive_all "$task" "worker"
-			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ] && cli::supports_review_agent; then
-				_start_run_review_agent "$task" "$session_id" "$iteration" \
-					"${project[identifier]}" "${project[title]}" "${worktree[dir]}"
+			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]; then
+				if ! deps::exists "$reviewer_cli"; then
+					log::warn "Code review skipped because reviewer CLI was not found: $reviewer_cli"
+				elif config::with_agent_env "$task" "reviewer" cli::supports_review_agent; then
+					config::with_agent_env "$task" "reviewer" _start_run_review_agent "$task" "$session_id" "$iteration" \
+						"${project[identifier]}" "${project[title]}" "${worktree[dir]}"
+				else
+					log::info "Code review skipped because reviewer CLI does not support review agent mode: $reviewer_cli"
+				fi
 			fi
 
 			# Check for completion

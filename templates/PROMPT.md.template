@@ -2,6 +2,15 @@
 
 **The Human controls this task. Sidecar supervision may ask you to wrap up. Direct human guidance may arrive via helioy-bus. Follow those messages immediately.**
 
+# Hard Invariants
+
+These come from CLAUDE.md and override every other directive in this document. They are mechanically enforced. `just check` will fail and block the commit if any are violated.
+
+- **700 LOC per file.** New `.ts` files under `src/` and `tests/` must stay under. Files already over are pinned at their current size by `scripts/check-loc-limit.sh` (decompose along natural seams, never grow).
+- **150 LOC per function.** Long functions hide duplication and kill readability. Split before modifying.
+- **DRY, no compromise.** Before writing a new function, helper, type, or constant, search for an existing one. If close, refactor to share. Never copy a block "just for this case". Never re-declare a type that already lives somewhere else. A PR that introduces duplication is not complete.
+- **Verify before done.** Run `just check && just build && just test` before every commit. Failures block the commit. Never rationalize as "pre-existing".
+
 # [{{PROJECT_IDENTIFIER}}]: {{PROJECT_TITLE}}
 
 **Session:** `{{SESSION_ID}}`
@@ -24,7 +33,7 @@ Use `git log --format=full -3` to understand recent changes and context from pre
 
 ## Collaboration Model
 
-**You are one worker in a relay team.** Tasks often span multiple sessions.
+**You are one worker in a relay team.** Tasks can span multiple sessions.
 
 - No pressure to finish everything. Quality over speed.
 - Handover via git commits. Write commit messages as if briefing the next developer.
@@ -43,6 +52,10 @@ nancy[ISSUE_ID]: Clear summary of what was done
 ```
 
 {{AGENT_ROLE_SECTION}}
+
+## Session Continuation
+
+Check to see if previous agent left you a handover message `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md`
 
 ## 1. Goal
 

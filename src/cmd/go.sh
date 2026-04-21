@@ -9,8 +9,21 @@ cmd::go() {
 	config::load
 
 	if [[ ! -d "$NANCY_DIR" ]]; then
-		log::error "Nancy not initialized. Run 'nancy setup' first."
-		return 1
+		log::warn "Nancy not initialized. Starting setup."
+		cmd::setup || return 1
+		config::load
+	fi
+
+	if ! config::has_agent_shape; then
+		log::warn "Nancy config uses the legacy agent shape. Run setup to configure worker and reviewer agents."
+		cmd::setup || return 1
+
+		if ! config::has_agent_shape; then
+			log::error "Nancy config still needs agents.worker and agents.reviewer. Run 'nancy setup' and reconfigure."
+			return 1
+		fi
+
+		config::load
 	fi
 
 	if [[ -z "$task" ]]; then

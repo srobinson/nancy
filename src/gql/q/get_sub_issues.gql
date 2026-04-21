@@ -2,7 +2,7 @@ query GetSubIssues($id: ID!) {
   issues(
     filter: {
       parent: { id: { eq: $id } }
-      state: { name: { nin: ["Cancelled", "Duplicate"] } }
+      state: { name: { nin: ["Canceled", "Done", "Duplicate"] } }
     }
     first: 250
   ) {
@@ -23,7 +23,7 @@ query GetSubIssues($id: ID!) {
         }
       }
       children(
-        filter: { state: { name: { nin: ["Cancelled", "Duplicate"] } } }
+        filter: { state: { name: { nin: ["Canceled", "Duplicate"] } } }
         first: 50
       ) {
         nodes {

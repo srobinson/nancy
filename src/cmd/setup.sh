@@ -48,18 +48,31 @@ cmd::setup() {
 		return 1
 	fi
 
-	# Select CLI
+	# Select worker CLI
 	local selected_cli
 	if [[ ${#available_clis[@]} -eq 1 ]]; then
 		selected_cli="${available_clis[0]}"
-		ui::success "Using $selected_cli"
+		ui::success "Using $selected_cli for worker and reviewer"
 	else
-		selected_cli=$(ui::choose_with_header "Select AI CLI:" "${available_clis[@]}")
+		selected_cli=$(ui::choose_with_header "Select worker AI CLI:" "${available_clis[@]}")
+	fi
+
+	local reviewer_cli="$selected_cli"
+	if [[ ${#available_clis[@]} -gt 1 ]]; then
+		reviewer_cli=$(ui::choose_with_header "Select reviewer AI CLI:" "${available_clis[@]}")
 	fi
 
 	# Get defaults for selected CLI
 	local default_model="${NANCY_DEFAULTS_MODEL[$selected_cli]:-opus}"
+	local reviewer_default_model="${NANCY_DEFAULTS_MODEL[$reviewer_cli]:-opus}"
 	local default_threshold="${NANCY_DEFAULTS_THRESHOLD[$selected_cli]:-0.20}"
+
+	local worker_model
+	local reviewer_model
+	worker_model=$(ui::input "Worker model" "$default_model")
+	reviewer_model=$(ui::input "Reviewer model" "$reviewer_default_model")
+	worker_model="${worker_model:-$default_model}"
+	reviewer_model="${reviewer_model:-$reviewer_default_model}"
 
 	# Create .nancy directory
 	mkdir -p "$NANCY_TASK_DIR"
@@ -67,10 +80,20 @@ cmd::setup() {
 	# Create config with defaults
 	cat >"$NANCY_CONFIG_FILE" <<EOF
 {
-  "version": "2.0",
+  "version": "2.1",
   "cli": "${selected_cli}",
-  "model": "${default_model}",
+  "model": "${worker_model}",
   "token_threshold": ${default_threshold},
+  "agents": {
+    "worker": {
+      "cli": "${selected_cli}",
+      "model": "${worker_model}"
+    },
+    "reviewer": {
+      "cli": "${reviewer_cli}",
+      "model": "${reviewer_model}"
+    }
+  },
   "git": {
     "auto_commit": true
   }
@@ -81,7 +104,9 @@ EOF
 	ui::success "Initialized: ${NANCY_DIR}"
 	echo ""
 	ui::muted "Defaults (edit ${NANCY_CONFIG_FILE} to change):"
-	ui::muted "  CLI: ${selected_cli}"
-	ui::muted "  Model: ${default_model}"
+	ui::muted "  Worker CLI: ${selected_cli}"
+	ui::muted "  Worker model: ${worker_model}"
+	ui::muted "  Reviewer CLI: ${reviewer_cli}"
+	ui::muted "  Reviewer model: ${reviewer_model}"
 	ui::muted "  Token threshold: ${default_threshold}"
 }

@@ -12,13 +12,16 @@ cmd::status() {
 	ui::header "📊 Nancy Status"
 
 	# Config info
-	local cli
-	cli=$(config::get '.cli.name' 'unknown')
-	local model
-	model=$(config::get '.cli.settings.model // .model' 'default')
+	local worker_cli worker_model reviewer_cli reviewer_model
+	worker_cli=$(config::get_agent "" "worker" "cli" "unknown")
+	worker_model=$(config::get_agent "" "worker" "model" "default")
+	reviewer_cli=$(config::get_agent "" "reviewer" "cli" "$worker_cli")
+	reviewer_model=$(config::get_agent "" "reviewer" "model" "$worker_model")
 
-	echo "CLI: $cli"
-	echo "Model: $model"
+	echo "Worker CLI: $worker_cli"
+	echo "Worker model: $worker_model"
+	echo "Reviewer CLI: $reviewer_cli"
+	echo "Reviewer model: $reviewer_model"
 	echo ""
 
 	# Tasks

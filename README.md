@@ -91,10 +91,21 @@ your-project/
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.1",
   "nancy_dir": ".nancy",
-  "model": "claude-sonnet-4.5",
+  "cli": "claude",
+  "model": "opus",
   "token_threshold": 0.2,
+  "agents": {
+    "worker": {
+      "cli": "codex",
+      "model": "gpt-5.4"
+    },
+    "reviewer": {
+      "cli": "claude",
+      "model": "opus"
+    }
+  },
   "git": {
     "auto_commit": true,
     "commit_message_template": "nancy(${task}): ${summary}",
