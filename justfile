@@ -4,6 +4,16 @@
 default:
     @just --list
 
+check:
+    python3 -m compileall -q src/analyze tests
+    find . -type f \( -name '*.sh' -o -name 'nancy' \) -print0 | xargs -0 bash -n
+
+build:
+    find . -type f \( -name '*.sh' -o -name 'nancy' \) -print0 | xargs -0 bash -n
+
+test:
+    python3 -m pytest tests -q
+
 # ------------- llm -------------
 
 # Add path comment header to files
