@@ -330,6 +330,33 @@ The orchestrator will assign the next issue.
 EOF
 }
 
+_start_turn_exit_instruction() {
+	local worker_cli="${1:-}"
+
+	case "$worker_cli" in
+	claude | claude-code)
+		cat <<'EOF'
+
+## Turn Exit
+
+When your mode action is complete, print one line with no surrounding text.
+
+That line must contain a backtick, then an opening angle bracket, then `END_TURN`, then a closing angle bracket, then a backtick.
+EOF
+		;;
+	*)
+		cat <<'EOF'
+
+## Turn Exit
+
+When your mode action is complete, print one line with no surrounding text.
+
+That line must contain an opening angle bracket, then `END_TURN`, then a closing angle bracket.
+EOF
+		;;
+	esac
+}
+
 _start_render_worker_prompt() {
 	local task="$1"
 	local session_id="$2"
@@ -338,6 +365,7 @@ _start_render_worker_prompt() {
 	local project_description="$5"
 	local worktree_dir="$6"
 	local agent_role="$7"
+	local worker_cli="${8:-$(cli::current)}"
 
 	local agent_role_section
 	agent_role_section=$(_start_agent_role_section "$agent_role")
@@ -365,6 +393,7 @@ _start_render_worker_prompt() {
 		prompt+=$'\n\n'
 		prompt+=$(cat "$prompt_file_local")
 	fi
+	prompt+=$(_start_turn_exit_instruction "$worker_cli")
 
 	printf '%s\n' "$prompt"
 }
@@ -521,7 +550,7 @@ cmd::start() {
 
 		local prompt
 		prompt=$(_start_render_worker_prompt "$task" "$session_id" "${project[identifier]}" "${project[title]}" \
-			"${project[description]}" "${worktree[dir]}" "$agent_role") || return 1
+			"${project[description]}" "${worktree[dir]}" "$agent_role" "$worker_cli") || return 1
 
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
