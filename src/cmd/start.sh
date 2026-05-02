@@ -196,6 +196,50 @@ _start_should_run_review_agent_for_mode() {
 	! _start_is_gate_aware_prompt_mode "$mode"
 }
 
+_start_has_reviewer_agent() {
+	local task="$1"
+	local task_config=""
+	local reviewer_cli=""
+
+	if [[ -n "$task" ]]; then
+		task_config="$NANCY_TASK_DIR/$task/config.json"
+	fi
+
+	reviewer_cli=$(config::_agent_key_from_file "$NANCY_CONFIG_FILE" "reviewer" "cli")
+	if [[ -z "$reviewer_cli" && -n "$task_config" && -f "$task_config" ]]; then
+		reviewer_cli=$(config::_agent_key_from_file "$task_config" "reviewer" "cli")
+	fi
+
+	[[ -n "$reviewer_cli" ]]
+}
+
+_start_mode_uses_reviewer_agent() {
+	case "${1:-}" in
+	agent_issue_review | post_execution_review)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+_start_should_run_reviewer_after_worker() {
+	local mode="${1:-}"
+	local task="$2"
+
+	_start_has_reviewer_agent "$task" || return 1
+
+	case "$mode" in
+	planning)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
 # Helper: Run code review agent
 _start_run_review_agent() {
 	local task="$1"
@@ -421,6 +465,8 @@ _start_run_worker_agent() {
 	local prompt="$4"
 	local agent_role="$5"
 	local worktree_dir="$6"
+	local agent_config_role="${7:-worker}"
+	local sidecar_mode="${8:-worker}"
 
 	local uuid
 	uuid=$(uuid::generate)
@@ -431,13 +477,13 @@ _start_run_worker_agent() {
 	local worker_pane=""
 	local sidecar_active=0
 	local sidecar_session=""
-	if [[ -n "${TMUX:-}" ]] && sidecar::enabled && config::with_agent_env "$task" "worker" cli::supports_sidecar; then
+	if [[ -n "${TMUX:-}" ]] && sidecar::enabled && config::with_agent_env "$task" "$agent_config_role" cli::supports_sidecar; then
 		worker_pane="${TMUX_PANE:-}"
 		if [[ -z "$worker_pane" ]]; then
 			worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
 		fi
 		echo "[$(date -Iseconds)] sidecar candidate pane: ${worker_pane:-<empty>}" >>"$sidecar_log"
-		if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "$worktree_dir" >>"$sidecar_log" 2>&1; then
+		if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "$worktree_dir" "$sidecar_mode" >>"$sidecar_log" 2>&1; then
 			sidecar_active=1
 			sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
 			_NANCY_CURRENT_SIDECAR_SESSION="$sidecar_session"
@@ -451,11 +497,11 @@ _start_run_worker_agent() {
 
 	local exit_code=0
 	local worker_agent_role=""
-	if config::with_agent_env "$task" "worker" cli::supports_agent_role; then
+	if config::with_agent_env "$task" "$agent_config_role" cli::supports_agent_role; then
 		worker_agent_role="$agent_role"
 	fi
 
-	config::with_agent_env "$task" "worker" cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
+	config::with_agent_env "$task" "$agent_config_role" cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
 
 	((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
 	if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
@@ -468,6 +514,47 @@ _start_run_worker_agent() {
 	sidecar::clear_completion "$task" 2>/dev/null || true
 
 	return $exit_code
+}
+
+_start_reviewer_agent() {
+	local task="$1"
+	local session_id="$2"
+	local iteration="$3"
+	local project_identifier="$4"
+	local project_title="$5"
+	local project_description="$6"
+	local worktree_dir="$7"
+	local reviewer_cli="$8"
+	local prompt_mode="${9:-agent_issue_review}"
+
+	if ! _start_has_reviewer_agent "$task"; then
+		log::error "Workflow reviewer required, but agents.reviewer.cli is not configured in .nancy/config.json"
+		return 1
+	fi
+
+	if ! deps::exists "$reviewer_cli"; then
+		log::error "Workflow reviewer CLI not found: $reviewer_cli"
+		return 1
+	fi
+
+	local old_prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
+	local reviewer_session_id="${session_id}-reviewer"
+	local timestamp
+	timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+	local reviewer_session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}-reviewer.md"
+	local prompt
+
+	_NEXT_PROMPT_MODE="$prompt_mode"
+	prompt=$(_start_render_worker_prompt "$task" "$reviewer_session_id" "$project_identifier" "$project_title" \
+		"$project_description" "$worktree_dir" "" "$reviewer_cli")
+	local render_status=$?
+	_NEXT_PROMPT_MODE="$old_prompt_mode"
+	[[ $render_status -eq 0 ]] || return "$render_status"
+
+	echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.reviewer.md"
+
+	log::info "Running workflow reviewer: ${reviewer_cli} (${prompt_mode})"
+	_start_run_worker_agent "$task" "$reviewer_session_id" "$reviewer_session_file" "$prompt" "" "$worktree_dir" "reviewer" "review"
 }
 
 cmd::start() {
@@ -524,9 +611,26 @@ cmd::start() {
 		# Create ISSUES.md and detect agent role from first uncompleted issue
 		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
 		local agent_role="${_NEXT_AGENT_ROLE:-}"
+		local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
+		local active_agent_config_role="worker"
+		local active_cli="$worker_cli"
+		local active_sidecar_mode="worker"
 
 		if [[ -n "$agent_role" ]]; then
 			log::info "Agent role: ${agent_role}"
+		fi
+		if _start_mode_uses_reviewer_agent "$prompt_mode"; then
+			if ! _start_has_reviewer_agent "$task"; then
+				log::error "Mode $prompt_mode requires agents.reviewer.cli in .nancy/config.json"
+				return 1
+			fi
+			active_agent_config_role="reviewer"
+			active_cli="$reviewer_cli"
+			active_sidecar_mode="review"
+		fi
+		if ! deps::exists "$active_cli"; then
+			log::error "Active CLI not found for $active_agent_config_role: $active_cli"
+			return 1
 		fi
 
 		# Archive stale directives from previous iterations so the
@@ -550,13 +654,14 @@ cmd::start() {
 
 		local prompt
 		prompt=$(_start_render_worker_prompt "$task" "$session_id" "${project[identifier]}" "${project[title]}" \
-			"${project[description]}" "${worktree[dir]}" "$agent_role" "$worker_cli") || return 1
+			"${project[description]}" "${worktree[dir]}" "$agent_role" "$active_cli") || return 1
 
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
 
 		local exit_code=0
-		_start_run_worker_agent "$task" "$session_id" "$session_file" "$prompt" "$agent_role" "${worktree[dir]}" || exit_code=$?
+		_start_run_worker_agent "$task" "$session_id" "$session_file" "$prompt" "$agent_role" "${worktree[dir]}" \
+			"$active_agent_config_role" "$active_sidecar_mode" || exit_code=$?
 
 		# Check for stop sentinel (written by `nancy stop`)
 		if [[ -f "$stop_file" ]]; then
@@ -573,8 +678,16 @@ cmd::start() {
 			# Archive worker directives before review so the review agent
 			# does not inherit stale guidance meant for the build agent.
 			comms::archive_all "$task" "worker"
-			_start_maybe_run_review_agent "${_NEXT_PROMPT_MODE:-execution}" "$task" "$session_id" "$iteration" \
-				"${project[identifier]}" "${project[title]}" "${worktree[dir]}" "$reviewer_cli"
+			if _start_should_run_reviewer_after_worker "$prompt_mode" "$task"; then
+				_start_reviewer_agent "$task" "$session_id" "$iteration" "${project[identifier]}" "${project[title]}" \
+					"${project[description]}" "${worktree[dir]}" "$reviewer_cli" "agent_issue_review" || return $?
+			elif [[ "$prompt_mode" == "planning" ]]; then
+				log::error "Planning mode requires agents.reviewer.cli in .nancy/config.json"
+				return 1
+			else
+				_start_maybe_run_review_agent "$prompt_mode" "$task" "$session_id" "$iteration" \
+					"${project[identifier]}" "${project[title]}" "${worktree[dir]}" "$reviewer_cli"
+			fi
 
 			# Check for completion
 			if task::is_complete "$task"; then
