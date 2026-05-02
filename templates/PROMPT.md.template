@@ -57,6 +57,8 @@ nancy[ISSUE_ID]: Clear summary of what was done
 
 Check to see if previous agent left you a handover message `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md`
 
+{{SELECTED_WORK_SECTION}}
+
 ## 1. Goal
 
 1. Implement all issues in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`.
@@ -64,9 +66,9 @@ Check to see if previous agent left you a handover message `{{NANCY_CURRENT_TASK
 
 ## 2. Work Loop
 
-Work on one issue at a time, in list order.
+Work on one issue at a time, using the selected issue above.
 
-0. Select the first uncompleted issue from ISSUES.md.
+0. Select the issue named in Selected Work. Do not infer authority from the first unchecked ISSUES.md row.
 1. Use `linear-server.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
 2. Use `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`.
 3. Implement, test, commit.

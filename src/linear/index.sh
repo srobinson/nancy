@@ -3,3 +3,4 @@
 # ------------------------------------------------------------------------------
 
 . "$NANCY_FRAMEWORK_ROOT/src/linear/issue.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/linear/selector.sh"

@@ -9,10 +9,35 @@ query GetSubIssues($id: ID!) {
     nodes {
       identifier
       title
+      description
       priorityLabel
       subIssueSortOrder
       state {
         name
+      }
+      inverseRelations(first: 50) {
+        nodes {
+          type
+          issue {
+            identifier
+            title
+            state {
+              name
+            }
+          }
+        }
+      }
+      relations(first: 50) {
+        nodes {
+          type
+          relatedIssue {
+            identifier
+            title
+            state {
+              name
+            }
+          }
+        }
       }
       labels {
         nodes {
@@ -29,10 +54,35 @@ query GetSubIssues($id: ID!) {
         nodes {
           identifier
           title
+          description
           priorityLabel
           subIssueSortOrder
           state {
             name
+          }
+          inverseRelations(first: 50) {
+            nodes {
+              type
+              issue {
+                identifier
+                title
+                state {
+                  name
+                }
+              }
+            }
+          }
+          relations(first: 50) {
+            nodes {
+              type
+              relatedIssue {
+                identifier
+                title
+                state {
+                  name
+                }
+              }
+            }
           }
           labels {
             nodes {
@@ -40,6 +90,11 @@ query GetSubIssues($id: ID!) {
               parent {
                 name
               }
+            }
+          }
+          children(first: 1) {
+            nodes {
+              identifier
             }
           }
         }

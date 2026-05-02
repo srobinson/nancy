@@ -6,6 +6,7 @@
 # Global for cleanup handler access
 _NANCY_CURRENT_TASK=""
 _NANCY_CURRENT_SIDECAR_SESSION=""
+_NEXT_SELECTOR_PROMPT_CONTEXT=""
 
 _start_cleanup() {
 	echo ""
@@ -75,59 +76,49 @@ _start_create_issues_file() {
 	local sub_issues=$(
 		linear::issue:sub "$project_id"
 	)
+	local selection
+	selection=$(linear::selector:evaluate "$sub_issues")
 
 	cat <<EOF >"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 # [$project_identifier] $project_title
 
 EOF
+	linear::selector:render_summary "$selection" >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
+	local row_jq
+	row_jq="$(linear::selector:row_marker_jq)"
+	row_jq+='
+		.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
+		(. as $p |
+			[
+				(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
+				$p.identifier,
+				$p.title,
+				($p.priorityLabel // "-"),
+				$p.state.name,
+				([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end),
+				($p | marker($selector))
+			],
+			(
+				$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
+				[
+					(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
+					("  ↳ " + .identifier),
+					.title,
+					(.priorityLabel // "-"),
+					.state.name,
+					([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end),
+					(. | marker($selector))
+				]
+			)
+		) | @tsv'
 
 	{
-		echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags"
-		echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
-			(. as $p |
-				[
-					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
-					$p.identifier,
-					$p.title,
-					($p.priorityLabel // "-"),
-					$p.state.name,
-					([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
-				],
-				(
-					$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
-					[
-						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
-						("  ↳ " + .identifier),
-						.title,
-						(.priorityLabel // "-"),
-						.state.name,
-						([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
-					]
-				)
-			) | @tsv'
+		echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags\tSelector"
+		echo "$sub_issues" | jq -r --argjson selector "$selection" "$row_jq"
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 
-	# Extract agent role from first uncompleted issue (parent or child)
-	# Walks sorted issues in order, finds first with incomplete state, returns its Agent Role label
-	_NEXT_AGENT_ROLE=$(echo "$sub_issues" | jq -r '
-		[.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
-			(. as $p |
-				if ($p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress") then
-					([$p.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
-				else
-					empty
-				end
-			),
-			(
-				.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
-				if (.state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress") then
-					([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // empty)
-				else
-					empty
-				end
-			)
-		] | .[0] // ""
-	')
+	_NEXT_AGENT_ROLE=$(jq -r '.selected_issue.agent_role // ""' <<<"$selection")
+	_NEXT_SELECTOR_PROMPT_CONTEXT=$(linear::selector:render_prompt_context "$selection")
 }
 
 # Helper: Setup git worktree
@@ -381,6 +372,7 @@ The orchestrator will assign the next issue."
 		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
 		prompt="${prompt//\{\{WORKTREE_DIR\}\}/${worktree[dir]}}"
 		prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
+		prompt="${prompt//\{\{SELECTED_WORK_SECTION\}\}/$_NEXT_SELECTOR_PROMPT_CONTEXT}"
 
 		# Append project-local prompt if present (e.g. project-specific rules)
 		local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
