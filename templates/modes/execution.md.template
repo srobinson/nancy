@@ -45,10 +45,3 @@ just check && just build && just test
 ```
 
 If `just check` fails, do not commit. Diagnose and fix the failure first.
-
-## Completion Sentinels
-
-Execution completion is not final task completion.
-
-- Write `CODE_COMPLETE` only after every authorized execution issue is Worker Done or Done, all checkboxes are marked, inbox is clear, and verification passes.
-- Do not write `COMPLETE` during execution. `COMPLETE` is reserved for final gate completion after post execution review and any corrective issues are closed.
