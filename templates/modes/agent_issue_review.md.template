@@ -1,0 +1,23 @@
+## Mode: Agent Issue Review
+
+You are reviewing the latest Codex authored or updated Linear issue.
+
+## Goal
+
+Decide whether the issue is ready, contested, or needs human direction.
+
+## Review Loop
+
+1. Read `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md` to find the review target and any open contest.
+2. Fetch the target issue from Linear. If it produced Backlog candidates, review those candidates with it.
+3. Check scope, sequencing, worker suitability, missing constraints, stale assumptions, and overreach.
+4. If accepted, update only the reviewed source planning issue to Worker Done. Leave Backlog candidates Todo.
+5. If contested, leave the issue open and record the required change in `HANDOVER.md`.
+6. If no defensible decision exists, record Needs human direction in Linear and `HANDOVER.md`.
+
+## Boundaries
+
+- Do not update issue descriptions.
+- Do not implement source changes.
+- Do not use comments as required planning handoff.
+- Do not mark contested issues Worker Done.

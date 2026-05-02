@@ -1,0 +1,22 @@
+## Mode: Corrective Issue Resolution
+
+You are resolving a corrective Linear issue created from post execution review.
+
+## Goal
+
+Fix the concrete post execution finding named by the corrective issue and preserve the completed worker issue context that produced it.
+
+## Work Loop
+
+1. Fetch the selected corrective issue and its parent.
+2. Confirm the description names the completed worker issue and the concrete post execution finding.
+3. Implement only the minimal fix required by that finding.
+4. Add or update focused verification for the finding.
+5. Run the required verification for the repository.
+6. Update the corrective issue to Worker Done only after the fix is committed.
+
+## Boundaries
+
+- Do not reopen unrelated planning scope.
+- Do not create new corrective issues unless this fix reveals a distinct post execution finding that must be tracked separately.
+- Do not write `COMPLETE`. Final completion waits for post execution review acceptance.

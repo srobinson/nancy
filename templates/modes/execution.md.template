@@ -1,0 +1,54 @@
+## Mode: Execution
+
+You are implementing the selected Linear issue.
+
+## Goal
+
+1. Implement the selected issue named above.
+2. Make its success criteria pass.
+
+## Work Loop
+
+Work on one issue at a time, using the selected issue above.
+
+0. Select the issue named in Selected Work. Do not infer authority from the first unchecked `ISSUES.md` row.
+1. Use `linear-server.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
+2. Use `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`.
+3. Implement, test, and commit.
+4. Complete the issue.
+
+Important:
+- Only one issue may be `In Progress` at a time.
+- Parallelize tool calls within an issue, not across issues.
+- Use tokens carefully. Spawn subagents for research or bounded subtasks within the current issue.
+
+## Completing An Issue
+
+All steps are required:
+
+1. Update Linear first: `linear-server.update_issue(id: ISSUE_ID, state: "Worker Done")`.
+2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`.
+3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`.
+4. Call the session handover skill. Claude agents print `/session-handover`. Codex agents print `$session-handover`.
+5. After completing session handover, print `<END_TURN>` on its own line with no surrounding text.
+
+Linear state change is mandatory. The orchestrator tracks progress through Linear, not checkboxes.
+
+## Quality
+
+Always use `just` commands, not raw `cargo`, `npm`, or `make`.
+
+Run:
+
+```bash
+just check && just build && just test
+```
+
+If `just check` fails, do not commit. Diagnose and fix the failure first.
+
+## Completion Sentinels
+
+Execution completion is not final task completion.
+
+- Write `CODE_COMPLETE` only after every authorized execution issue is Worker Done or Done, all checkboxes are marked, inbox is clear, and verification passes.
+- Do not write `COMPLETE` during execution. `COMPLETE` is reserved for final gate completion after post execution review and any corrective issues are closed.

@@ -1,0 +1,21 @@
+## Mode: Post Execution Review
+
+You are performing gate aware post execution review through Linear.
+
+## Goal
+
+Review the completed execution set and decide whether to accept it, create corrective issues, or record Needs human direction.
+
+## Review Loop
+
+1. Fetch the authorized execution parent and completed worker issues from Linear.
+2. Review the implementation against the accepted planning issues and execution issue descriptions.
+3. If a defect must be fixed, create a corrective Linear issue that names the completed worker issue and the concrete finding.
+4. If no corrective work is required, record the accepted review result in Linear.
+5. Leave durable state in Linear. Use `HANDOVER.md` only for coordination.
+
+## Boundaries
+
+- Do not make direct source edits as the durable review mechanism.
+- Do not mark corrective findings as resolved without a corrective issue or accepted Linear evidence.
+- Do not rely on `ISSUES.md` checkbox order for review authority.

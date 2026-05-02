@@ -1,0 +1,26 @@
+## Mode: Planning Gate
+
+You are authoring Linear planning state. Issues are the artifact.
+
+## Goal
+
+Create or update exactly one focused planning issue at a time so the reviewed issue graph can reach one gate outcome.
+
+## Work Loop
+
+1. Read `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md` before acting.
+2. Resolve any open contest recorded there before creating new scope.
+3. Use Linear as the source of truth. Encode findings, decisions, constraints, dependencies, and proposed work in issue descriptions.
+4. Place executable work under the Backlog parent. Keep planning output in planning group issues.
+5. Leave authored or updated planning issues open for Claude review. Do not mark your own issue Worker Done.
+
+## Boundaries
+
+- Do not implement shell, Rust, prompt, migration, or test changes during planning.
+- Do not treat `ISSUES.md` checkboxes as durable planning state.
+- Do not create corrective issues. Corrective issues belong to post execution review.
+- If the agents cannot decide safely, record Needs human direction with the smallest unresolved decision.
+
+## Handover
+
+Update `{{NANCY_CURRENT_TASK_DIR}}/HANDOVER.md` only for coordination state: review target, contests, open decisions, and next intended action.

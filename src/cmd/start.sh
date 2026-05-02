@@ -7,6 +7,7 @@
 _NANCY_CURRENT_TASK=""
 _NANCY_CURRENT_SIDECAR_SESSION=""
 _NEXT_SELECTOR_PROMPT_CONTEXT=""
+_NEXT_PROMPT_MODE="execution"
 
 _start_cleanup() {
 	echo ""
@@ -118,6 +119,7 @@ EOF
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 
 	_NEXT_AGENT_ROLE=$(jq -r '.selected_issue.agent_role // ""' <<<"$selection")
+	_NEXT_PROMPT_MODE=$(jq -r '.selected_mode // "execution"' <<<"$selection")
 	_NEXT_SELECTOR_PROMPT_CONTEXT=$(linear::selector:render_prompt_context "$selection")
 }
 
@@ -362,6 +364,9 @@ The orchestrator will assign the next issue."
 
 		# Render main prompt (direct substitution matching orchestrator pattern)
 		local prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
+		local mode_instructions
+		mode_instructions=$(prompt::mode_instructions "${_NEXT_PROMPT_MODE:-execution}")
+		prompt="${prompt//\{\{MODE_INSTRUCTIONS_SECTION\}\}/$mode_instructions}"
 		prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
 		prompt="${prompt//\{\{NANCY_CURRENT_TASK_DIR\}\}/$NANCY_CURRENT_TASK_DIR}"
 		prompt="${prompt//\{\{SESSION_ID\}\}/$session_id}"
