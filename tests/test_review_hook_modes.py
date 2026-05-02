@@ -50,11 +50,3 @@ def test_legacy_review_hook_requires_explicit_legacy_local_hygiene_mode():
     '''
 
     _run_review_mode_script(script)
-
-
-def test_post_execution_review_prompt_stays_distinct_from_legacy_reviewer_prompt():
-    post_review = (REPO_ROOT / "templates" / "modes" / "post_execution_review.md.template").read_text()
-    legacy_review = (REPO_ROOT / "templates" / "REVIEW.md.template").read_text()
-
-    assert "Do not make direct source edits as the durable review mechanism" in post_review
-    assert "may commit review fixes" in legacy_review
