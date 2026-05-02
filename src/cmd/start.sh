@@ -176,6 +176,26 @@ _start_setup_worktree() {
 	log::info "Working in worktree: $(pwd)"
 }
 
+_start_is_gate_aware_prompt_mode() {
+	case "${1:-}" in
+	planning | agent_issue_review | execution | corrective_resolution | post_execution_review | needs_human_direction)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+_start_should_run_review_agent_for_mode() {
+	local mode="${1:-}"
+
+	[[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]] || return 1
+	[[ "${NANCY_LEGACY_LOCAL_REVIEW_ENABLED:-false}" == "true" ]] || return 1
+	[[ "$mode" == "legacy_local_hygiene" ]] || return 1
+	! _start_is_gate_aware_prompt_mode "$mode"
+}
+
 # Helper: Run code review agent
 _start_run_review_agent() {
 	local task="$1"
@@ -267,6 +287,160 @@ _start_run_review_agent() {
 	return $exit_code
 }
 
+_start_maybe_run_review_agent() {
+	local mode="$1"
+	local task="$2"
+	local session_id="$3"
+	local iteration="$4"
+	local project_identifier="$5"
+	local project_title="$6"
+	local worktree_dir="$7"
+	local reviewer_cli="$8"
+
+	if ! _start_should_run_review_agent_for_mode "$mode"; then
+		if [[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]] && _start_is_gate_aware_prompt_mode "$mode"; then
+			log::info "Legacy code review hook skipped for gate aware mode: $mode"
+		fi
+		return 0
+	fi
+
+	if ! deps::exists "$reviewer_cli"; then
+		log::warn "Code review skipped because reviewer CLI was not found: $reviewer_cli"
+	elif config::with_agent_env "$task" "reviewer" cli::supports_review_agent; then
+		config::with_agent_env "$task" "reviewer" _start_run_review_agent "$task" "$session_id" "$iteration" \
+			"$project_identifier" "$project_title" "$worktree_dir"
+	else
+		log::info "Code review skipped because reviewer CLI does not support review agent mode: $reviewer_cli"
+	fi
+}
+
+_start_agent_role_section() {
+	local agent_role="$1"
+
+	if [[ -z "$agent_role" ]]; then
+		return 0
+	fi
+
+	cat <<'EOF'
+## Agent Recycling Rules
+
+1. Only work on one issue at a time. Once complete, end your turn
+
+The orchestrator will assign the next issue.
+EOF
+}
+
+_start_render_worker_prompt() {
+	local task="$1"
+	local session_id="$2"
+	local project_identifier="$3"
+	local project_title="$4"
+	local project_description="$5"
+	local worktree_dir="$6"
+	local agent_role="$7"
+
+	local agent_role_section
+	agent_role_section=$(_start_agent_role_section "$agent_role")
+
+	local prompt
+	prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
+	local mode_instructions
+	mode_instructions=$(prompt::mode_instructions "${_NEXT_PROMPT_MODE:-execution}") || return 1
+	prompt="${prompt//\{\{MODE_INSTRUCTIONS_SECTION\}\}/$mode_instructions}"
+	prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
+	prompt="${prompt//\{\{NANCY_CURRENT_TASK_DIR\}\}/$NANCY_CURRENT_TASK_DIR}"
+	prompt="${prompt//\{\{SESSION_ID\}\}/$session_id}"
+	prompt="${prompt//\{\{TASK_NAME\}\}/$task}"
+	prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/$project_identifier}"
+	prompt="${prompt//\{\{PROJECT_TITLE\}\}/$project_title}"
+	local safe_description="${project_description//&/\\&}"
+	prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
+	prompt="${prompt//\{\{WORKTREE_DIR\}\}/$worktree_dir}"
+	prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
+	prompt="${prompt//\{\{SELECTED_WORK_SECTION\}\}/$_NEXT_SELECTOR_PROMPT_CONTEXT}"
+
+	local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
+	if [[ -f "$prompt_file_local" ]]; then
+		log::info "Appending local prompt: $prompt_file_local" >&2
+		prompt+=$'\n\n'
+		prompt+=$(cat "$prompt_file_local")
+	fi
+
+	printf '%s\n' "$prompt"
+}
+
+_start_print_start_info() {
+	local task="$1"
+	local worker_cli="$2"
+	local worker_model="$3"
+	local reviewer_cli="$4"
+	local reviewer_model="$5"
+
+	ui::header "🔄 Starting Nancy: $task"
+	log::info "Worker CLI: ${worker_cli}${worker_model:+ ($worker_model)}"
+	if [[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]]; then
+		log::info "Reviewer CLI: ${reviewer_cli}${reviewer_model:+ ($reviewer_model)}"
+	fi
+	log::info "Press Ctrl+C to stop"
+	echo ""
+}
+
+_start_run_worker_agent() {
+	local task="$1"
+	local session_id="$2"
+	local session_file="$3"
+	local prompt="$4"
+	local agent_role="$5"
+	local worktree_dir="$6"
+
+	local uuid
+	uuid=$(uuid::generate)
+	local sidecar_log="$NANCY_CURRENT_TASK_DIR/logs/sidecar.log"
+	mkdir -p "$(dirname "$sidecar_log")"
+	echo "[$(date -Iseconds)] preparing sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$uuid" >>"$sidecar_log"
+
+	local worker_pane=""
+	local sidecar_active=0
+	local sidecar_session=""
+	if [[ -n "${TMUX:-}" ]] && sidecar::enabled && config::with_agent_env "$task" "worker" cli::supports_sidecar; then
+		worker_pane="${TMUX_PANE:-}"
+		if [[ -z "$worker_pane" ]]; then
+			worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
+		fi
+		echo "[$(date -Iseconds)] sidecar candidate pane: ${worker_pane:-<empty>}" >>"$sidecar_log"
+		if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "$worktree_dir" >>"$sidecar_log" 2>&1; then
+			sidecar_active=1
+			sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
+			_NANCY_CURRENT_SIDECAR_SESSION="$sidecar_session"
+			echo "[$(date -Iseconds)] sidecar spawn invoked: ${sidecar_session:-<unknown>}" >>"$sidecar_log"
+		else
+			echo "[$(date -Iseconds)] sidecar spawn failed" >>"$sidecar_log"
+		fi
+	else
+		echo "[$(date -Iseconds)] sidecar skipped" >>"$sidecar_log"
+	fi
+
+	local exit_code=0
+	local worker_agent_role=""
+	if config::with_agent_env "$task" "worker" cli::supports_agent_role; then
+		worker_agent_role="$agent_role"
+	fi
+
+	config::with_agent_env "$task" "worker" cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
+
+	((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
+	if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
+		_NANCY_CURRENT_SIDECAR_SESSION=""
+	fi
+	if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
+		log::info "Worker exit normalized to success after completion-driven rotation"
+		exit_code=0
+	fi
+	sidecar::clear_completion "$task" 2>/dev/null || true
+
+	return $exit_code
+}
+
 cmd::start() {
 	local task="${1:-}"
 
@@ -311,14 +485,7 @@ cmd::start() {
 		return 1
 	fi
 
-	# Show start info
-	ui::header "🔄 Starting Nancy: $task"
-	log::info "Worker CLI: ${worker_cli}${worker_model:+ ($worker_model)}"
-	if [[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]]; then
-		log::info "Reviewer CLI: ${reviewer_cli}${reviewer_model:+ ($reviewer_model)}"
-	fi
-	log::info "Press Ctrl+C to stop"
-	echo ""
+	_start_print_start_info "$task" "$worker_cli" "$worker_model" "$reviewer_cli" "$reviewer_model"
 
 	# Main iteration loop
 	local iteration=$(task::count_sessions "$task")
@@ -352,88 +519,15 @@ cmd::start() {
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo ""
 
-		# Build agent role section (empty if no role specified)
-		local agent_role_section=""
-		if [[ -n "$agent_role" ]]; then
-			agent_role_section="## Agent Recycling Rules
-
-1. Only work on one issue at a time. Once complete, end your turn
-
-The orchestrator will assign the next issue."
-		fi
-
-		# Render main prompt (direct substitution matching orchestrator pattern)
-		local prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
-		local mode_instructions
-		mode_instructions=$(prompt::mode_instructions "${_NEXT_PROMPT_MODE:-execution}")
-		prompt="${prompt//\{\{MODE_INSTRUCTIONS_SECTION\}\}/$mode_instructions}"
-		prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
-		prompt="${prompt//\{\{NANCY_CURRENT_TASK_DIR\}\}/$NANCY_CURRENT_TASK_DIR}"
-		prompt="${prompt//\{\{SESSION_ID\}\}/$session_id}"
-		prompt="${prompt//\{\{TASK_NAME\}\}/$task}"
-		prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/${project[identifier]}}"
-		prompt="${prompt//\{\{PROJECT_TITLE\}\}/${project[title]}}"
-		local safe_description="${project[description]//&/\\&}"
-		prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
-		prompt="${prompt//\{\{WORKTREE_DIR\}\}/${worktree[dir]}}"
-		prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
-		prompt="${prompt//\{\{SELECTED_WORK_SECTION\}\}/$_NEXT_SELECTOR_PROMPT_CONTEXT}"
-
-		# Append project-local prompt if present (e.g. project-specific rules)
-		local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
-		if [[ -f "$prompt_file_local" ]]; then
-			log::info "Appending local prompt: $prompt_file_local"
-			prompt+=$'\n\n'
-			prompt+=$(cat "$prompt_file_local")
-		fi
+		local prompt
+		prompt=$(_start_render_worker_prompt "$task" "$session_id" "${project[identifier]}" "${project[title]}" \
+			"${project[description]}" "${worktree[dir]}" "$agent_role") || return 1
 
 		# Save rendered prompt
 		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
 
-		local uuid
-		uuid=$(uuid::generate)
-		local sidecar_log="$NANCY_CURRENT_TASK_DIR/logs/sidecar.log"
-		mkdir -p "$(dirname "$sidecar_log")"
-		echo "[$(date -Iseconds)] preparing sidecar spawn: TMUX=${TMUX:-<empty>} TMUX_PANE=${TMUX_PANE:-<empty>} uuid=$uuid" >>"$sidecar_log"
-
-		local worker_pane=""
-		local sidecar_active=0
-		local sidecar_session=""
-		if [[ -n "${TMUX:-}" ]] && sidecar::enabled && config::with_agent_env "$task" "worker" cli::supports_sidecar; then
-			worker_pane="${TMUX_PANE:-}"
-			if [[ -z "$worker_pane" ]]; then
-				worker_pane=$(tmux display-message -p -t "${TMUX_PANE:-}" '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || true)
-			fi
-			echo "[$(date -Iseconds)] sidecar candidate pane: ${worker_pane:-<empty>}" >>"$sidecar_log"
-			if sidecar::spawn_bg "$task" "$uuid" "$worker_pane" "${worktree[dir]}" >>"$sidecar_log" 2>&1; then
-				sidecar_active=1
-				sidecar_session="${SIDECAR_LAST_SESSION_NAME:-}"
-				_NANCY_CURRENT_SIDECAR_SESSION="$sidecar_session"
-				echo "[$(date -Iseconds)] sidecar spawn invoked: ${sidecar_session:-<unknown>}" >>"$sidecar_log"
-			else
-				echo "[$(date -Iseconds)] sidecar spawn failed" >>"$sidecar_log"
-			fi
-		else
-			echo "[$(date -Iseconds)] sidecar skipped" >>"$sidecar_log"
-		fi
-
 		local exit_code=0
-		local worker_agent_role=""
-		if config::with_agent_env "$task" "worker" cli::supports_agent_role; then
-			worker_agent_role="$agent_role"
-		fi
-
-		config::with_agent_env "$task" "worker" cli::run_prompt "$prompt" "$session_id" "$session_file" "$NANCY_CURRENT_TASK_DIR" "$worker_agent_role" "$uuid" || exit_code=$?
-
-		((sidecar_active == 1)) && sidecar::stop "$task" "$sidecar_session"
-		if [[ "$_NANCY_CURRENT_SIDECAR_SESSION" == "$sidecar_session" ]]; then
-			_NANCY_CURRENT_SIDECAR_SESSION=""
-		fi
-		if [[ $exit_code -ne 0 ]] && sidecar::completion_marked "$task"; then
-			log::info "Worker exit normalized to success after completion-driven rotation"
-			exit_code=0
-		fi
-		sidecar::clear_completion "$task" 2>/dev/null || true
+		_start_run_worker_agent "$task" "$session_id" "$session_file" "$prompt" "$agent_role" "${worktree[dir]}" || exit_code=$?
 
 		# Check for stop sentinel (written by `nancy stop`)
 		if [[ -f "$stop_file" ]]; then
@@ -450,16 +544,8 @@ The orchestrator will assign the next issue."
 			# Archive worker directives before review so the review agent
 			# does not inherit stale guidance meant for the build agent.
 			comms::archive_all "$task" "worker"
-			if [ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]; then
-				if ! deps::exists "$reviewer_cli"; then
-					log::warn "Code review skipped because reviewer CLI was not found: $reviewer_cli"
-				elif config::with_agent_env "$task" "reviewer" cli::supports_review_agent; then
-					config::with_agent_env "$task" "reviewer" _start_run_review_agent "$task" "$session_id" "$iteration" \
-						"${project[identifier]}" "${project[title]}" "${worktree[dir]}"
-				else
-					log::info "Code review skipped because reviewer CLI does not support review agent mode: $reviewer_cli"
-				fi
-			fi
+			_start_maybe_run_review_agent "${_NEXT_PROMPT_MODE:-execution}" "$task" "$session_id" "$iteration" \
+				"${project[identifier]}" "${project[title]}" "${worktree[dir]}" "$reviewer_cli"
 
 			# Check for completion
 			if task::is_complete "$task"; then
