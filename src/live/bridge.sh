@@ -31,7 +31,7 @@ live::bridge_should_dispatch() {
 	bin=$(live::bridge_bin)
 	if [[ ! -x "$bin" ]]; then
 		printf 'Rust live path requested but executable not found: %s\n' "$bin" >&2
-		return 1
+		exit 1
 	fi
 
 	return 0

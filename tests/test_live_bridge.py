@@ -194,3 +194,20 @@ def test_opt_in_rust_live_bridge_dispatches_only_setup_and_go(tmp_path):
     )
     assert status_result.returncode != 23
     assert not capture.exists()
+
+
+def test_opt_in_rust_live_bridge_exits_when_binary_missing(tmp_path):
+    missing = tmp_path / "does-not-exist" / "nancy-live"
+
+    result = _run_nancy(
+        tmp_path,
+        ["setup"],
+        {
+            "NANCY_RUST_LIVE_ENABLED": "1",
+            "NANCY_RUST_LIVE_BIN": str(missing),
+        },
+    )
+
+    assert result.returncode != 0
+    assert str(missing) in result.stderr
+    assert not (tmp_path / ".nancy").exists()
