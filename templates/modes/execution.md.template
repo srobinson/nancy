@@ -30,7 +30,7 @@ All steps are required:
 2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`.
 3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`.
 4. Call the session handover skill. Claude agents print `/session-handover`. Codex agents print `$session-handover`.
-5. After completing session handover, print `<END_TURN>` on its own line with no surrounding text.
+5. Follow the Turn Exit instruction appended by the runtime.
 
 Linear state change is mandatory. The orchestrator tracks progress through Linear, not checkboxes.
 
