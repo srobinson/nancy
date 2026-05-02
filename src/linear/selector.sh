@@ -5,13 +5,20 @@
 
 linear::selector:evaluate() {
 	local issue_tree="$1"
+	local status_tree="${2:-$issue_tree}"
 
 	jq '
 		def issue_ids: [scan("[A-Z]+-[0-9]+")];
 		def state_name: .state.name;
 		def is_selectable: state_name as $s | ["Todo", "In Progress"] | index($s);
+		def is_open_state: state_name as $s | ["Todo", "In Progress"] | index($s);
+		def is_accepted_state: state_name as $s | ["Worker Done", "Done"] | index($s);
 		def role:
 			([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // "");
+		def is_backlog:
+			.title == "Backlog";
+		def is_gate_review:
+			.title | test("Gate review|execution readiness"; "i");
 		def has_label($name):
 			any(.labels.nodes[]?; (.name | ascii_downcase) == ($name | ascii_downcase));
 		def is_corrective:
@@ -55,11 +62,19 @@ linear::selector:evaluate() {
 			} end;
 
 		(.data.issues.nodes // []) as $parents |
+		($status.data.issues.nodes // []) as $status_parents |
+		([ $status_parents[] | enriched({}; 1) ]) as $status_direct |
+		([ $status_direct[] | select((is_backlog | not) and (is_gate_review | not) and is_open_state) ]) as $open_planning |
+		([ $status_direct[] | select(is_gate_review) ]) as $gate_reviews |
+		([ $gate_reviews[] | select(is_open_state) ] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $open_gate_review |
+		([ $gate_reviews[] | select(is_accepted_state) ] | sort_by(.subIssueSortOrder // 0) | reverse | .[0] // null) as $raw_accepted_gate_status |
+		(if (($open_planning | length) > 0 or $open_gate_review != null) then null else $raw_accepted_gate_status end) as $accepted_gate_status |
 		([ $parents[] | enriched({}; 1) ]) as $direct |
 		([ $parents[] as $p | $p.children.nodes[]? | enriched($p; 2) ]) as $children |
 		($direct + $children) as $all |
 		([ $children[] | select((.children.nodes // []) | length > 0) ]) as $too_deep |
 		([ $direct[] |
+			select(.identifier == ($accepted_gate_status.identifier // "")) |
 			select((.description // "") | test("Outcome: Ready for execution|Outcome: Pre execution blockers required"))
 		] | .[0] // null) as $accepted_gate |
 		([ $direct[] | select(.title | test("Gate review|execution readiness"; "i")) ] | .[0] // null) as $gate_review |
@@ -77,13 +92,21 @@ linear::selector:evaluate() {
 		([ $authorized[] | select(is_selectable and .review) ]) as $review_open |
 		([ $authorized[] | select(is_selectable and (.corrective | not) and (.review | not)) ]) as $execution_open |
 		(if ($too_deep | length) > 0 then "needs_human_direction"
+		elif ($open_planning | length) > 0 then "planning"
+		elif $open_gate_review != null then "planning"
 		elif ($corrective_open | length) > 0 then "corrective_resolution"
 		elif (($execution_open | length) == 0 and ($review_open | length) > 0) then "post_execution_review"
 		elif ($authorized_ids | length) > 0 then "execution"
 		else "planning"
 		end) as $mode |
 		(if $mode == "planning" then
-			[ $direct[] | select(is_selectable and (.title != "Backlog")) ]
+			if ($open_planning | length) > 0 then
+				[ $direct[] | .identifier as $id | select(any($open_planning[]; .identifier == $id)) ]
+			elif $open_gate_review != null then
+				[ $direct[] | select(.identifier == $open_gate_review.identifier) ]
+			else
+				[ $direct[] | select(is_selectable and (.title != "Backlog")) ]
+			end
 		elif $mode == "corrective_resolution" then
 			$corrective_open
 		elif $mode == "post_execution_review" then
@@ -146,7 +169,7 @@ linear::selector:evaluate() {
 			hierarchy_depth_supported: 2,
 			requires_human_direction: (($too_deep | length) > 0)
 		}
-	' <<<"$issue_tree"
+	' --argjson status "$status_tree" <<<"$issue_tree"
 }
 
 linear::selector:render_summary() {

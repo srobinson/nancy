@@ -26,6 +26,18 @@ linear::issue:sub() {
 	gql::client::query "$query"
 }
 
+linear::issue:sub:statuses() {
+	local parent_id=${1}
+
+	local variables=$(
+		gql::query::variables "id::$parent_id"
+	)
+	local query=$(
+		gql::query::generate "$NANCY_FRAMEWORK_ROOT/src/gql/q/get_sub_issue_statuses.gql" "$variables"
+	)
+	gql::client::query "$query"
+}
+
 linear::issue:next() {
 	local project_name=${1}
 	local state_name=${2:-Todo}

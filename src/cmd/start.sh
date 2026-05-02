@@ -77,8 +77,11 @@ _start_create_issues_file() {
 	local sub_issues=$(
 		linear::issue:sub "$project_id"
 	)
+	local sub_issue_statuses=$(
+		linear::issue:sub:statuses "$project_id"
+	)
 	local selection
-	selection=$(linear::selector:evaluate "$sub_issues")
+	selection=$(linear::selector:evaluate "$sub_issues" "$sub_issue_statuses")
 
 	cat <<EOF >"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 # [$project_identifier] $project_title

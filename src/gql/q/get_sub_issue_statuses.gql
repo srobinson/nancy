@@ -1,0 +1,59 @@
+query GetSubIssueStatuses($id: ID!) {
+  issues(
+    filter: {
+      parent: { id: { eq: $id } }
+      state: { name: { nin: ["Canceled", "Duplicate"] } }
+    }
+    first: 250
+  ) {
+    nodes {
+      identifier
+      title
+      subIssueSortOrder
+      state {
+        name
+        type
+      }
+      inverseRelations(first: 50) {
+        nodes {
+          type
+          issue {
+            identifier
+            title
+            state {
+              name
+              type
+            }
+          }
+        }
+      }
+      children(
+        filter: { state: { name: { nin: ["Canceled", "Duplicate"] } } }
+        first: 250
+      ) {
+        nodes {
+          identifier
+          title
+          subIssueSortOrder
+          state {
+            name
+            type
+          }
+          inverseRelations(first: 50) {
+            nodes {
+              type
+              issue {
+                identifier
+                title
+                state {
+                  name
+                  type
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
