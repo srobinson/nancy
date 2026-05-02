@@ -203,3 +203,53 @@ def test_post_execution_review_requires_done_blockers():
     assert selected["blocked_candidates"][0]["identifier"] == "ALP-3002"
     assert selected["blocked_candidates"][0]["blockers"] == ["ALP-3000"]
     assert selected["completion_threshold"]["blocker_release_states"] == ["Done"]
+
+
+def test_canceled_or_duplicate_blocker_does_not_block_selection():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue(
+                    "ALP-3001",
+                    "Has canceled blocker",
+                    sort=1,
+                    blockers=[{"identifier": "ALP-9999", "state": "Canceled"}],
+                ),
+                _issue(
+                    "ALP-3002",
+                    "Has duplicate blocker",
+                    sort=2,
+                    blockers=[{"identifier": "ALP-9998", "state": "Duplicate"}],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "execution"
+    assert selected["selected_issue"]["identifier"] == "ALP-3001"
+    assert selected["blocked_candidates"] == []
+
+
+def test_grandchildren_trigger_needs_human_direction():
+    grandchild = _issue("ALP-4001", "Too deep", sort=1)
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3001`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3001", "Has children", sort=1, children=[grandchild]),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_issue"] is None
+    assert selected["requires_human_direction"] is True

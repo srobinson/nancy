@@ -19,7 +19,8 @@ linear::selector:evaluate() {
 		def is_review:
 			has_label("Post Execution Review") or (.title | test("^post[ -]execution review"; "i"));
 		def released($mode):
-			if ($mode == "post_execution_review" or $mode == "final_completion")
+			if (. == "Canceled" or . == "Duplicate") then true
+			elif ($mode == "post_execution_review" or $mode == "final_completion")
 			then . == "Done"
 			else (. == "Worker Done" or . == "Done")
 			end;
