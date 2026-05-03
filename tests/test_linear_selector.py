@@ -10,7 +10,7 @@ def _labels(*names):
     return {"nodes": [{"name": name, "parent": {"name": "Agent Role" if name.endswith("-engineer") else "Type"}} for name in names]}
 
 
-def _issue(identifier, title, state="Todo", sort=0, description="", children=None, blockers=None, labels=None):
+def _issue(identifier, title, state="Todo", sort=0, description="", children=None, blockers=None, labels=None, comments=None):
     return {
         "identifier": identifier,
         "title": title,
@@ -19,6 +19,16 @@ def _issue(identifier, title, state="Todo", sort=0, description="", children=Non
         "subIssueSortOrder": sort,
         "state": {"name": state},
         "labels": _labels(*(labels or [])),
+        "comments": {
+            "nodes": [
+                {
+                    "body": comment["body"],
+                    "createdAt": comment.get("createdAt", f"2026-01-01T00:00:0{idx}Z"),
+                    "updatedAt": comment.get("updatedAt", f"2026-01-01T00:00:0{idx}Z"),
+                }
+                for idx, comment in enumerate(comments or [])
+            ]
+        },
         "relations": {"nodes": []},
         "inverseRelations": {
             "nodes": [
@@ -182,7 +192,7 @@ def test_corrective_issue_outranks_post_execution_review():
     assert selected["corrective_priority_evidence"]["corrective_outranks_review"] is True
 
 
-def test_post_execution_review_requires_done_blockers():
+def test_post_execution_review_accepts_worker_done_blockers():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3002`"),
         _issue(
@@ -203,10 +213,9 @@ def test_post_execution_review_requires_done_blockers():
     selected = _select(issue_tree)
 
     assert selected["selected_mode"] == "post_execution_review"
-    assert selected["selected_issue"] is None
-    assert selected["blocked_candidates"][0]["identifier"] == "ALP-3002"
-    assert selected["blocked_candidates"][0]["blockers"] == ["ALP-3000"]
-    assert selected["completion_threshold"]["blocker_release_states"] == ["Done"]
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["blocked_candidates"] == []
+    assert selected["completion_threshold"]["blocker_release_states"] == ["Worker Done", "Done"]
 
 
 def test_canceled_or_duplicate_blocker_does_not_block_selection():
@@ -259,6 +268,217 @@ def test_grandchildren_trigger_needs_human_direction():
     assert selected["requires_human_direction"] is True
 
 
+def test_post_execution_review_needs_human_direction_blocks_final_completion():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+            ],
+        ),
+    )
+    status_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    state="Done",
+                    sort=2,
+                    comments=[
+                        {
+                            "body": "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select_with_status(issue_tree, status_tree)
+
+    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_issue"] is None
+    assert selected["human_direction"]["identifier"] == "ALP-3002"
+    assert "Needs human direction" in selected["human_direction"]["blocker"]
+
+
+def test_human_direction_comment_releases_review_back_to_post_execution_review():
+    old_blocker = {
+        "body": "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.",
+        "createdAt": "2026-01-01T00:00:01Z",
+        "updatedAt": "2026-01-01T00:00:01Z",
+    }
+    human_answer = {
+        "body": "Human direction: smoke after publish.",
+        "createdAt": "2026-01-01T00:00:02Z",
+        "updatedAt": "2026-01-01T00:00:02Z",
+    }
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    sort=2,
+                    comments=[old_blocker, human_answer],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["human_direction"] is None
+
+
+def test_post_execution_review_names_one_worker_review_target():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                _issue("ALP-3002", "Post execution review", sort=3),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["review_target"] == {
+        "identifier": "ALP-3000",
+        "title": "First worker",
+        "state": "Worker Done",
+    }
+
+
+def test_post_execution_review_target_advances_after_review_marker():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    sort=3,
+                    comments=[
+                        {
+                            "body": "Reviewed worker issue: ALP-3000\nPost execution review passed for ALP-3000.",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["review_target"]["identifier"] == "ALP-3001"
+
+
+def test_post_execution_review_ignores_pass_comment_without_reviewed_prefix():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    sort=3,
+                    comments=[
+                        {
+                            "body": "Post execution review passed for ALP-3000.",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["review_target"]["identifier"] == "ALP-3000"
+
+
+def test_closed_review_with_unreviewed_worker_requires_human_direction():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+            ],
+        ),
+    )
+    status_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    state="Done",
+                    sort=3,
+                    comments=[
+                        {
+                            "body": "Reviewed worker issue: ALP-3000\nOutcome: Review passed",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select_with_status(issue_tree, status_tree)
+
+    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_issue"] is None
+    assert selected["review_target"] is None
+    assert selected["requires_human_direction"] is True
+    assert "closed before every worker issue was reviewed" in selected["eligibility_reason"]
+
+
 def test_all_authorized_work_terminal_selects_final_completion():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3002`, `ALP-3003`, `ALP-3001`"),
@@ -277,8 +497,20 @@ def test_all_authorized_work_terminal_selects_final_completion():
             "Backlog",
             children=[
                 _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
-                _issue("ALP-3002", "Post execution review", state="Done", sort=2),
-                _issue("ALP-3003", "corrective: Fix reviewed defect", state="Done", sort=3),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    state="Done",
+                    sort=2,
+                    comments=[
+                        {
+                            "body": "Reviewed worker issue: ALP-3000\nOutcome: Review passed",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+                _issue("ALP-3003", "corrective: Fix reviewed defect", state="Worker Done", sort=3),
                 _issue("ALP-3001", "Post execution review final aggregate", state="Done", sort=4),
             ],
         ),

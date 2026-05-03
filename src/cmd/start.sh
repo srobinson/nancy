@@ -147,6 +147,12 @@ _start_handle_null_selection() {
 		return 0
 		;;
 	needs_human_direction)
+		linear::selector:render_blocker "$selection"
+		mkdir -p "${NANCY_TASK_DIR}/${task}"
+		cat >"${NANCY_TASK_DIR}/${task}/PAUSE" <<EOF
+Paused at $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+Reason: Needs human direction
+EOF
 		return 2
 		;;
 	*)
@@ -155,6 +161,33 @@ _start_handle_null_selection() {
 		return 1
 		;;
 	esac
+}
+
+_start_wait_while_paused() {
+	local task="$1"
+	local pause_lock="${NANCY_TASK_DIR}/${task}/PAUSE"
+
+	if [ ! -f "$pause_lock" ]; then
+		return 0
+	fi
+
+	echo ""
+	log::info "Paused for human direction."
+	ui::muted "Waiting for unpause... (Ctrl+C to stop)"
+
+	while [ -f "$pause_lock" ]; do
+		sleep 2
+	done
+
+	echo ""
+	log::info "Resuming after human direction."
+}
+
+_start_clear_stale_sentinels() {
+	local task="$1"
+	local task_dir="${NANCY_TASK_DIR}/${task}"
+
+	rm -f "${task_dir}/STOP" "${task_dir}/COMPLETE" 2>/dev/null || true
 }
 
 # Helper: Setup git worktree
@@ -265,7 +298,7 @@ _start_should_run_reviewer_after_worker() {
 	_start_has_reviewer_agent "$task" || return 1
 
 	case "$mode" in
-	planning | post_execution_review)
+	planning)
 		return 0
 		;;
 	*)
@@ -616,10 +649,10 @@ cmd::start() {
 	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
 	local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
 
-	# A previous run may have left behind a STOP sentinel. Clear it before
-	# starting a fresh loop so stale manual stop requests do not terminate the
-	# new worker immediately after its first successful rotation.
-	rm -f "$stop_file" 2>/dev/null || true
+	# A previous run may have left behind local sentinels. Clear them before
+	# starting a fresh loop; selector final_completion recreates COMPLETE when
+	# the current Linear state is truly terminal.
+	_start_clear_stale_sentinels "$task"
 
 	# Fetch Linear context
 	declare -A project
@@ -675,6 +708,8 @@ cmd::start() {
 				return 0
 				;;
 			2)
+				_start_wait_while_paused "$task"
+				continue
 				;;
 			*)
 				return "$null_selection_status"
@@ -774,19 +809,7 @@ cmd::start() {
 		fi
 
 		# Pause check
-		local pause_lock="${NANCY_CURRENT_TASK_DIR}/PAUSE"
-		if [ -f "$pause_lock" ]; then
-			echo ""
-			log::info "⏸️  Paused (lock file detected)"
-			ui::muted "Waiting for unpause... (Ctrl+C to stop)"
-
-			while [ -f "$pause_lock" ]; do
-				sleep 2
-			done
-
-			echo ""
-			log::info "▶️  Resuming..."
-		fi
+		_start_wait_while_paused "$task"
 
 		echo ""
 		log::info "Starting next iteration in 2s..."

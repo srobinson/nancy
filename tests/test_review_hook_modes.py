@@ -67,20 +67,14 @@ def test_post_execution_review_primary_pass_uses_worker_agent():
     _run_review_mode_script(script)
 
 
-def test_post_execution_review_runs_reviewer_followup_in_same_mode():
+def test_post_execution_review_ends_after_one_agent_turn():
     script = r'''
         source src/cmd/start.sh
 
         _start_has_reviewer_agent() { return 0; }
 
-        if ! _start_should_run_reviewer_after_worker post_execution_review ALP-2154; then
-            echo "post execution review should run reviewer followup"
-            exit 1
-        fi
-
-        followup_mode=$(_start_reviewer_followup_mode post_execution_review)
-        if [[ "$followup_mode" != "post_execution_review" ]]; then
-            echo "expected post_execution_review followup, got $followup_mode"
+        if _start_should_run_reviewer_after_worker post_execution_review ALP-2154; then
+            echo "post execution review should end after one agent turn"
             exit 1
         fi
 
@@ -154,6 +148,7 @@ def test_null_selection_final_completion_marks_task_complete():
     script = r'''
         source src/cmd/start.sh
         source src/task/task.sh
+        source src/linear/selector.sh
 
         NANCY_TASK_DIR=$(mktemp -d)
         export NANCY_TASK_DIR
@@ -199,6 +194,77 @@ def test_null_selection_without_final_completion_stops_before_agent_launch():
 
         if _start_handle_null_selection ALP-1 project-1 execution "$selection"; then
             echo "null execution selection should stop"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_needs_human_direction_pauses_without_completion():
+    script = r'''
+        source src/cmd/start.sh
+        source src/task/task.sh
+        source src/linear/selector.sh
+
+        NANCY_TASK_DIR=$(mktemp -d)
+        export NANCY_TASK_DIR
+        mkdir -p "$NANCY_TASK_DIR/ALP-1"
+
+        updated_state=""
+        linear::issue:update:status() {
+            updated_state="$1:$2"
+        }
+
+        selection='{"selected_mode":"needs_human_direction","selected_issue":null,"eligibility_reason":"Needs human direction","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"In Progress","blocker":"Outcome: Needs human direction. Decide smoke timing."}}'
+
+        output=$(_start_handle_null_selection ALP-1 project-1 needs_human_direction "$selection")
+        status=$?
+
+        if [[ "$status" -ne 2 ]]; then
+            echo "expected status 2, got $status"
+            exit 1
+        fi
+        if [[ -n "$updated_state" ]]; then
+            echo "parent should not be closed: $updated_state"
+            exit 1
+        fi
+        if [[ -f "$NANCY_TASK_DIR/ALP-1/COMPLETE" ]]; then
+            echo "COMPLETE should not be created"
+            exit 1
+        fi
+        if [[ ! -f "$NANCY_TASK_DIR/ALP-1/PAUSE" ]]; then
+            echo "PAUSE was not created"
+            exit 1
+        fi
+        if [[ "$output" != *"BLOCKER: Needs human direction"* || "$output" != *"Outcome: Needs human direction"* ]]; then
+            echo "blocker output missing"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_start_clears_stale_stop_and_complete_sentinels():
+    script = r'''
+        source src/cmd/start.sh
+
+        NANCY_TASK_DIR=$(mktemp -d)
+        export NANCY_TASK_DIR
+        mkdir -p "$NANCY_TASK_DIR/ALP-1"
+        echo stale >"$NANCY_TASK_DIR/ALP-1/STOP"
+        echo stale >"$NANCY_TASK_DIR/ALP-1/COMPLETE"
+
+        _start_clear_stale_sentinels ALP-1
+
+        if [[ -f "$NANCY_TASK_DIR/ALP-1/STOP" ]]; then
+            echo "STOP should be cleared"
+            exit 1
+        fi
+        if [[ -f "$NANCY_TASK_DIR/ALP-1/COMPLETE" ]]; then
+            echo "COMPLETE should be cleared"
             exit 1
         fi
     '''

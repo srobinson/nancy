@@ -15,6 +15,13 @@ query GetSubIssueStatuses($id: ID!) {
         name
         type
       }
+      comments(first: 250) {
+        nodes {
+          body
+          createdAt
+          updatedAt
+        }
+      }
       inverseRelations(first: 50) {
         nodes {
           type
@@ -40,6 +47,13 @@ query GetSubIssueStatuses($id: ID!) {
           state {
             name
             type
+          }
+          comments(first: 250) {
+            nodes {
+              body
+              createdAt
+              updatedAt
+            }
           }
           inverseRelations(first: 50) {
             nodes {

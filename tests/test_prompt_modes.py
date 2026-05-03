@@ -63,6 +63,15 @@ def test_corrective_resolution_requires_post_execution_finding_context():
     assert "completed worker issue" in instructions
 
 
+def test_post_execution_review_requires_one_target_and_no_aggregate_review():
+    instructions = _mode_instructions("post_execution_review")
+
+    assert "review only that target" in instructions
+    assert "do not review source or the execution set" in instructions
+    assert "Do not review more than one worker issue" in instructions
+    assert "Do not perform aggregate execution set review" in instructions
+
+
 def test_execution_prompt_completes_issue_not_task():
     instructions = _mode_instructions("execution")
 

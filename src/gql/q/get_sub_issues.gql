@@ -15,6 +15,13 @@ query GetSubIssues($id: ID!) {
       state {
         name
       }
+      comments(first: 250) {
+        nodes {
+          body
+          createdAt
+          updatedAt
+        }
+      }
       inverseRelations(first: 50) {
         nodes {
           type
@@ -59,6 +66,13 @@ query GetSubIssues($id: ID!) {
           subIssueSortOrder
           state {
             name
+          }
+          comments(first: 250) {
+            nodes {
+              body
+              createdAt
+              updatedAt
+            }
           }
           inverseRelations(first: 50) {
             nodes {
