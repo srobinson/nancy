@@ -9,6 +9,7 @@ query GetSubIssueStatuses($id: ID!) {
     nodes {
       identifier
       title
+      description
       subIssueSortOrder
       state {
         name
@@ -34,6 +35,7 @@ query GetSubIssueStatuses($id: ID!) {
         nodes {
           identifier
           title
+          description
           subIssueSortOrder
           state {
             name

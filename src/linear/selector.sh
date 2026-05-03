@@ -25,6 +25,10 @@ linear::selector:evaluate() {
 			has_label("Corrective") or (.title | test("corrective"; "i"));
 		def is_review:
 			has_label("Post Execution Review") or (.title | test("^post[ -]execution review"; "i"));
+		def is_final_accepted:
+			if is_review or is_corrective then state_name == "Done"
+			else is_accepted_state
+			end;
 		def released($mode):
 			if (. == "Canceled" or . == "Duplicate") then true
 			elif ($mode == "post_execution_review" or $mode == "final_completion")
@@ -64,6 +68,8 @@ linear::selector:evaluate() {
 		(.data.issues.nodes // []) as $parents |
 		($status.data.issues.nodes // []) as $status_parents |
 		([ $status_parents[] | enriched({}; 1) ]) as $status_direct |
+		([ $status_parents[] as $p | $p.children.nodes[]? | enriched($p; 2) ]) as $status_children |
+		($status_direct + $status_children) as $status_all |
 		([ $status_direct[] | select((is_backlog | not) and (is_gate_review | not) and is_open_state) ]) as $open_planning |
 		([ $status_direct[] | select(is_gate_review) ]) as $gate_reviews |
 		([ $gate_reviews[] | select(is_open_state) ] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $open_gate_review |
@@ -76,7 +82,10 @@ linear::selector:evaluate() {
 		([ $direct[] |
 			select(.identifier == ($accepted_gate_status.identifier // "")) |
 			select((.description // "") | test("Outcome: Ready for execution|Outcome: Pre execution blockers required"))
-		] | .[0] // null) as $accepted_gate |
+		] | .[0] // ([ $status_direct[] |
+			select(.identifier == ($accepted_gate_status.identifier // "")) |
+			select((.description // "") | test("Outcome: Ready for execution|Outcome: Pre execution blockers required"))
+		] | .[0] // null)) as $accepted_gate |
 		([ $direct[] | select(.title | test("Gate review|execution readiness"; "i")) ] | .[0] // null) as $gate_review |
 		($accepted_gate.description // "") as $gate_text |
 		([try ($gate_text | capture("Authorized (?:execution|blocker) parent: `(?<id>[A-Z]+-[0-9]+)`").id) catch empty] | .[0] // "") as $authorized_parent |
@@ -88,6 +97,19 @@ linear::selector:evaluate() {
 		([ $all[] |
 			select((.parent_identifier == $authorized_parent) and (.identifier as $id | $authorized_ids | index($id)))
 		]) as $authorized |
+		([ $status_all[] |
+			select((.parent_identifier == $authorized_parent) and (.identifier as $id | $authorized_ids | index($id)))
+		]) as $authorized_status |
+		([ $authorized_ids[] as $id |
+			select(([ $authorized_status[].identifier ] | index($id)) | not)
+		]) as $missing_authorized_status |
+		([ $authorized_status[] | select(is_final_accepted | not) ]) as $not_final_authorized |
+		(
+			($authorized_ids | length) > 0
+			and $accepted_gate != null
+			and ($missing_authorized_status | length) == 0
+			and ($not_final_authorized | length) == 0
+		) as $final_ready |
 		([ $authorized[] | select(is_selectable and .corrective) ]) as $corrective_open |
 		([ $authorized[] | select(is_selectable and .review) ]) as $review_open |
 		([ $authorized[] | select(is_selectable and (.corrective | not) and (.review | not)) ]) as $execution_open |
@@ -96,6 +118,7 @@ linear::selector:evaluate() {
 		elif $open_gate_review != null then "planning"
 		elif ($corrective_open | length) > 0 then "corrective_resolution"
 		elif (($execution_open | length) == 0 and ($review_open | length) > 0) then "post_execution_review"
+		elif $final_ready then "final_completion"
 		elif ($authorized_ids | length) > 0 then "execution"
 		else "planning"
 		end) as $mode |
@@ -125,6 +148,8 @@ linear::selector:evaluate() {
 			eligibility_reason:
 				(if $mode == "needs_human_direction" then
 					"Hierarchy deeper than children and grandchildren requires human direction"
+				elif $mode == "final_completion" then
+					"All authorized gate work is terminal"
 				elif $selected == null then
 					"No eligible issue after gate, status, and blocker checks"
 				elif $mode == "corrective_resolution" then

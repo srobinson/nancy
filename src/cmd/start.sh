@@ -8,6 +8,7 @@ _NANCY_CURRENT_TASK=""
 _NANCY_CURRENT_SIDECAR_SESSION=""
 _NEXT_SELECTOR_PROMPT_CONTEXT=""
 _NEXT_PROMPT_MODE="execution"
+_NEXT_SELECTION=""
 
 _start_cleanup() {
 	echo ""
@@ -89,8 +90,7 @@ _start_create_issues_file() {
 EOF
 	linear::selector:render_summary "$selection" >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 	local row_jq
-	row_jq="$(linear::selector:row_marker_jq)"
-	row_jq+='
+	row_jq='
 		.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
 		(. as $p |
 			[
@@ -98,9 +98,7 @@ EOF
 				$p.identifier,
 				$p.title,
 				($p.priorityLabel // "-"),
-				$p.state.name,
-				([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end),
-				($p | marker($selector))
+				$p.state.name
 			],
 			(
 				$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
@@ -109,21 +107,54 @@ EOF
 					("  ↳ " + .identifier),
 					.title,
 					(.priorityLabel // "-"),
-					.state.name,
-					([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end),
-					(. | marker($selector))
+					.state.name
 				]
 			)
 		) | @tsv'
 
 	{
-		echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags\tSelector"
-		echo "$sub_issues" | jq -r --argjson selector "$selection" "$row_jq"
+		echo '```text'
+		echo -e " \tISSUE_ID\tTitle\tPriority\tState"
+		echo "$sub_issues" | jq -r "$row_jq"
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
+	echo '```' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 
 	_NEXT_AGENT_ROLE=$(jq -r '.selected_issue.agent_role // ""' <<<"$selection")
 	_NEXT_PROMPT_MODE=$(jq -r '.selected_mode // "execution"' <<<"$selection")
 	_NEXT_SELECTOR_PROMPT_CONTEXT=$(linear::selector:render_prompt_context "$selection")
+	_NEXT_SELECTION="$selection"
+}
+
+_start_selection_has_no_issue() {
+	local selection="$1"
+
+	jq -e '.selected_issue == null' >/dev/null <<<"$selection"
+}
+
+_start_handle_null_selection() {
+	local task="$1"
+	local project_id="$2"
+	local prompt_mode="$3"
+	local selection="$4"
+
+	case "$prompt_mode" in
+	final_completion)
+		log::info "No eligible Linear issue remains. Closing task from selector final completion."
+		linear::issue:update:status "$project_id" "Worker Done"
+		task::mark_complete "$task"
+		echo ""
+		ui::banner "🎉 Task Complete!" "$task"
+		return 0
+		;;
+	needs_human_direction)
+		return 2
+		;;
+	*)
+		log::error "No eligible Linear issue selected. Refusing to launch an agent without selected work."
+		linear::selector:render_summary "$selection" >&2
+		return 1
+		;;
+	esac
 }
 
 # Helper: Setup git worktree
@@ -218,7 +249,7 @@ _start_has_reviewer_agent() {
 
 _start_mode_uses_reviewer_agent() {
 	case "${1:-}" in
-	agent_issue_review | post_execution_review)
+	agent_issue_review)
 		return 0
 		;;
 	*)
@@ -234,11 +265,22 @@ _start_should_run_reviewer_after_worker() {
 	_start_has_reviewer_agent "$task" || return 1
 
 	case "$mode" in
-	planning)
+	planning | post_execution_review)
 		return 0
 		;;
 	*)
 		return 1
+		;;
+	esac
+}
+
+_start_reviewer_followup_mode() {
+	case "${1:-}" in
+	post_execution_review)
+		echo "post_execution_review"
+		;;
+	*)
+		echo "agent_issue_review"
 		;;
 	esac
 }
@@ -615,9 +657,30 @@ cmd::start() {
 		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
 		local agent_role="${_NEXT_AGENT_ROLE:-}"
 		local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
+		local selection="${_NEXT_SELECTION:-{}}"
 		local active_agent_config_role="worker"
 		local active_cli="$worker_cli"
 		local active_sidecar_mode="worker"
+
+		if [[ "$prompt_mode" == "final_completion" ]]; then
+			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection"
+			return $?
+		fi
+
+		if _start_selection_has_no_issue "$selection"; then
+			local null_selection_status=0
+			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection" || null_selection_status=$?
+			case "$null_selection_status" in
+			0)
+				return 0
+				;;
+			2)
+				;;
+			*)
+				return "$null_selection_status"
+				;;
+			esac
+		fi
 
 		if [[ -n "$agent_role" ]]; then
 			log::info "Agent role: ${agent_role}"
@@ -682,8 +745,10 @@ cmd::start() {
 			# does not inherit stale guidance meant for the build agent.
 			comms::archive_all "$task" "worker"
 			if _start_should_run_reviewer_after_worker "$prompt_mode" "$task"; then
+				local reviewer_prompt_mode
+				reviewer_prompt_mode=$(_start_reviewer_followup_mode "$prompt_mode")
 				_start_reviewer_agent "$task" "$session_id" "$iteration" "${project[identifier]}" "${project[title]}" \
-					"${project[description]}" "${worktree[dir]}" "$reviewer_cli" "agent_issue_review" || return $?
+					"${project[description]}" "${worktree[dir]}" "$reviewer_cli" "$reviewer_prompt_mode" || return $?
 			elif [[ "$prompt_mode" == "planning" ]]; then
 				log::error "Planning mode requires agents.reviewer.cli in .nancy/config.json"
 				return 1

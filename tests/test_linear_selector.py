@@ -42,12 +42,16 @@ def _tree(*issues):
 
 
 def _select(issue_tree):
+    return _select_with_status(issue_tree, issue_tree)
+
+
+def _select_with_status(issue_tree, status_tree):
     script = (
         "source src/linear/selector.sh; "
-        "linear::selector:evaluate \"$1\""
+        "linear::selector:evaluate \"$1\" \"$2\""
     )
     result = subprocess.run(
-        ["bash", "-c", script, "selector", json.dumps(issue_tree)],
+        ["bash", "-c", script, "selector", json.dumps(issue_tree), json.dumps(status_tree)],
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
@@ -253,3 +257,35 @@ def test_grandchildren_trigger_needs_human_direction():
     assert selected["selected_mode"] == "needs_human_direction"
     assert selected["selected_issue"] is None
     assert selected["requires_human_direction"] is True
+
+
+def test_all_authorized_work_terminal_selects_final_completion():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3002`, `ALP-3003`, `ALP-3001`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+            ],
+        ),
+    )
+    status_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3002`, `ALP-3003`, `ALP-3001`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+                _issue("ALP-3002", "Post execution review", state="Done", sort=2),
+                _issue("ALP-3003", "corrective: Fix reviewed defect", state="Done", sort=3),
+                _issue("ALP-3001", "Post execution review final aggregate", state="Done", sort=4),
+            ],
+        ),
+    )
+
+    selected = _select_with_status(issue_tree, status_tree)
+
+    assert selected["selected_mode"] == "final_completion"
+    assert selected["selected_issue"] is None
+    assert selected["blocked_candidates"] == []

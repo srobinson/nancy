@@ -1,83 +1,39 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ------------------------------------------------------------------------------
 
-export NANCY_FRAMEWORK_ROOT="$(pwd)"
+set -euo pipefail
+
+export NANCY_FRAMEWORK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export NANCY_PROJECT_ROOT="$NANCY_FRAMEWORK_ROOT"
+export NANCY_DIR="$NANCY_PROJECT_ROOT/.nancy"
+export NANCY_TASK_DIR="$NANCY_DIR/tasks"
+export NANCY_CONFIG_FILE="$NANCY_DIR/config.json"
+export NANCY_CURRENT_TASK_DIR="$NANCY_PROJECT_ROOT"
 
 # ------------------------------------------------------------------------------
 
-. "src/gql/index.sh"
-. "src/linear/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/gql/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/linear/index.sh"
+. "$NANCY_FRAMEWORK_ROOT/src/cmd/start.sh"
 
 # ------------------------------------------------------------------------------
 
-id="ALP-1403"
-
-# linear::issue:comment:add "$id" "This is a test comment from Nancy CLI." >/dev/null
+task="${1:-ALP-2154}"
 
 parent_issue=$(
-	linear::issue "$id"
+	linear::issue "$task"
 )
 
 {
 	read -r -d '' project_id
 	read -r -d '' project_identifier
 	read -r -d '' project_title
-	read -r -d '' project_description
 } < <(jq -j '.data.issue |
-			.id, "\u0000",
-      .identifier, "\u0000",
-      .title, "\u0000",
-      .description, "\u0000"
-  ' <<<"$parent_issue")
+	.id, "\u0000",
+	.identifier, "\u0000",
+	.title, "\u0000"
+' <<<"$parent_issue")
 
-sub_issues=$(
-	linear::issue:sub "$project_id"
-)
+_start_create_issues_file "$task" "$project_id" "$project_identifier" "$project_title"
 
-# Write header
-cat <<EOF >"ISSUES.md"
-# [$project_identifier] $project_title
-
-EOF
-
-# Append formatted table
-{
-	echo -e " \tISSUE_ID\tTitle\tPriority\tState\tTags"
-	echo "$sub_issues" | jq -r '.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
-			(. as $p |
-				[
-					(if $p.state.name == "Backlog" or $p.state.name == "Todo" or $p.state.name == "In Progress" then "[ ]" else "[X]" end),
-					$p.identifier,
-					$p.title,
-					($p.priorityLabel // "-"),
-					$p.state.name,
-					([$p.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
-				],
-				(
-					$p.children.nodes | sort_by(.subIssueSortOrder) | .[]? |
-					[
-						(if .state.name == "Backlog" or .state.name == "Todo" or .state.name == "In Progress" then "[ ]" else "[X]" end),
-						("  ↳ " + .identifier),
-						.title,
-						(.priorityLabel // "-"),
-						.state.name,
-						([.labels.nodes[] | select(.parent.name == "Agent Role") | .name] | if length > 0 then join(", ") else "-" end)
-					]
-				)
-			) | @tsv'
-} | column -t -s $'\t' >>"ISSUES.md"
-
-# echo "Issue ID: $id"
-# echo "Title: $title"
-# echo "Description: $desc"
-
-# sub_issues=$(
-# 	linear::issue:sub "$id"
-# )
-
-# # ----------------------------------------------
-
-# # echo "$sub_issues" | jq '.'
-# echo "$sub_issues" | jq -r '.data.issues.nodes[] | ["[ ]", .identifier, .title, .priorityLabel // "-", .state.name] | @tsv' | column -t -s $'\t'
-
-# ----------------------------------------------
+cat "$NANCY_CURRENT_TASK_DIR/ISSUES.md"

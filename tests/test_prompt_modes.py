@@ -63,9 +63,15 @@ def test_corrective_resolution_requires_post_execution_finding_context():
     assert "completed worker issue" in instructions
 
 
-def test_execution_prompt_distinguishes_code_complete_from_complete():
+def test_execution_prompt_completes_issue_not_task():
     instructions = _mode_instructions("execution")
 
-    assert "CODE_COMPLETE" in instructions
-    assert "COMPLETE" in instructions
-    assert "Do not write `COMPLETE`" in instructions
+    assert 'state: "Worker Done"' in instructions
+    assert "CODE_COMPLETE" not in instructions
+    assert "Do not write `COMPLETE`" not in instructions
+
+
+def test_corrective_resolution_does_not_repeat_complete_sentinel_warning():
+    instructions = _mode_instructions("corrective_resolution")
+
+    assert "Do not write `COMPLETE`" not in instructions

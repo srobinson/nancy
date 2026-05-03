@@ -19,4 +19,3 @@ Fix the concrete post execution finding named by the corrective issue and preser
 
 - Do not reopen unrelated planning scope.
 - Do not create new corrective issues unless this fix reveals a distinct post execution finding that must be tracked separately.
-- Do not write `COMPLETE`. Final completion waits for post execution review acceptance.
