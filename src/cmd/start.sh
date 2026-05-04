@@ -483,6 +483,12 @@ EOF
 	esac
 }
 
+_start_prompt_replacement() {
+	local value="$1"
+	value="${value//&/\\&}"
+	printf '%s' "$value"
+}
+
 _start_render_worker_prompt() {
 	local task="$1"
 	local session_id="$2"
@@ -500,18 +506,17 @@ _start_render_worker_prompt() {
 	prompt=$(cat "${NANCY_FRAMEWORK_ROOT}/templates/PROMPT.md.template")
 	local mode_instructions
 	mode_instructions=$(prompt::mode_instructions "${_NEXT_PROMPT_MODE:-execution}") || return 1
-	prompt="${prompt//\{\{MODE_INSTRUCTIONS_SECTION\}\}/$mode_instructions}"
-	prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$NANCY_PROJECT_ROOT}"
-	prompt="${prompt//\{\{NANCY_CURRENT_TASK_DIR\}\}/$NANCY_CURRENT_TASK_DIR}"
-	prompt="${prompt//\{\{SESSION_ID\}\}/$session_id}"
-	prompt="${prompt//\{\{TASK_NAME\}\}/$task}"
-	prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/$project_identifier}"
-	prompt="${prompt//\{\{PROJECT_TITLE\}\}/$project_title}"
-	local safe_description="${project_description//&/\\&}"
-	prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$safe_description}"
-	prompt="${prompt//\{\{WORKTREE_DIR\}\}/$worktree_dir}"
-	prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$agent_role_section}"
-	prompt="${prompt//\{\{SELECTED_WORK_SECTION\}\}/$_NEXT_SELECTOR_PROMPT_CONTEXT}"
+	prompt="${prompt//\{\{MODE_INSTRUCTIONS_SECTION\}\}/$(_start_prompt_replacement "$mode_instructions")}"
+	prompt="${prompt//\{\{NANCY_PROJECT_ROOT\}\}/$(_start_prompt_replacement "$NANCY_PROJECT_ROOT")}"
+	prompt="${prompt//\{\{NANCY_CURRENT_TASK_DIR\}\}/$(_start_prompt_replacement "$NANCY_CURRENT_TASK_DIR")}"
+	prompt="${prompt//\{\{SESSION_ID\}\}/$(_start_prompt_replacement "$session_id")}"
+	prompt="${prompt//\{\{TASK_NAME\}\}/$(_start_prompt_replacement "$task")}"
+	prompt="${prompt//\{\{PROJECT_IDENTIFIER\}\}/$(_start_prompt_replacement "$project_identifier")}"
+	prompt="${prompt//\{\{PROJECT_TITLE\}\}/$(_start_prompt_replacement "$project_title")}"
+	prompt="${prompt//\{\{PROJECT_DESCRIPTION\}\}/$(_start_prompt_replacement "$project_description")}"
+	prompt="${prompt//\{\{WORKTREE_DIR\}\}/$(_start_prompt_replacement "$worktree_dir")}"
+	prompt="${prompt//\{\{AGENT_ROLE_SECTION\}\}/$(_start_prompt_replacement "$agent_role_section")}"
+	prompt="${prompt//\{\{SELECTED_WORK_SECTION\}\}/$(_start_prompt_replacement "$_NEXT_SELECTOR_PROMPT_CONTEXT")}"
 
 	local prompt_file_local="${NANCY_PROJECT_ROOT}/PROMPT.md"
 	if [[ -f "$prompt_file_local" ]]; then
