@@ -24,7 +24,9 @@ linear::selector:evaluate() {
 		def is_corrective:
 			has_label("Corrective") or (.title | test("corrective"; "i"));
 		def is_review:
-			has_label("Post Execution Review") or (.title | test("^post[ -]execution review"; "i"));
+			has_label("Post Execution Review")
+			or (.title | test("^post[ -]execution review"; "i"))
+			or ((.description // "") | test("(^|\n)[ \t]*Post execution review"; "i"));
 		def direction_events:
 			[.comments.nodes[]? |
 				{
@@ -149,7 +151,7 @@ linear::selector:evaluate() {
 			and ($review_target == null)
 		) as $final_ready |
 		([ $authorized[] | select(is_selectable and .corrective) ]) as $corrective_open |
-		([ $authorized[] | select(is_selectable and .review) ]) as $review_open |
+		([ $authorized[] | select(.review and (is_selectable or state_name == "Worker Done")) ]) as $review_open |
 		([ $authorized[] | select(is_selectable and (.corrective | not) and (.review | not)) ]) as $execution_open |
 		([ $authorized_status[] | select(.review and has_unresolved_human_direction) ]) as $human_direction_reviews |
 		(if ($too_deep | length) > 0 then "needs_human_direction"

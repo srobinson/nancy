@@ -403,6 +403,85 @@ def test_post_execution_review_names_one_worker_review_target():
     }
 
 
+def test_post_execution_review_candidate_in_worker_done_resumes_one_target_review():
+    review = _issue(
+        "ALP-3002",
+        "Review implementation and release readiness",
+        state="Worker Done",
+        sort=3,
+        description="## Type\n\nPost execution review candidate from `ALP-2999`.",
+        comments=[
+            {
+                "body": "Post execution review outcome.\n\nCorrective work:\n\n* Created `ALP-3003`.",
+                "createdAt": "2026-01-01T00:00:01Z",
+                "updatedAt": "2026-01-01T00:00:01Z",
+            }
+        ],
+    )
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`, `ALP-3003`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                review,
+                _issue("ALP-3003", "Corrective: Fix reviewed defect", state="Worker Done", sort=4),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["review_target"] == {
+        "identifier": "ALP-3000",
+        "title": "First worker",
+        "state": "Worker Done",
+    }
+
+
+def test_corrective_reference_to_post_execution_review_is_not_review_issue():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue(
+                    "ALP-3001",
+                    "Corrective: Fix reviewed defect",
+                    state="Worker Done",
+                    sort=2,
+                    description="## Type\n\nCorrective implementation issue from the post execution review.",
+                ),
+                _issue(
+                    "ALP-3002",
+                    "Review implementation and release readiness",
+                    state="Worker Done",
+                    sort=3,
+                    description="## Type\n\nPost execution review candidate from `ALP-2999`.",
+                ),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["corrective_priority_evidence"]["open_review"] == [
+        {
+            "identifier": "ALP-3002",
+            "title": "Review implementation and release readiness",
+            "state": "Worker Done",
+        }
+    ]
+
+
 def test_post_execution_review_target_advances_after_review_marker():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
