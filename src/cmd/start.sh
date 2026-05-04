@@ -85,7 +85,7 @@ _start_create_issues_file() {
 	local raw_selection
 	raw_selection=$(linear::selector:evaluate "$sub_issues" "$sub_issue_statuses")
 	local selection
-	if ! selection=$(jq -c '.' 2>/dev/null <<<"$raw_selection"); then
+	if ! selection=$(linear::selector:canonicalize "$raw_selection"); then
 		log::error "Linear selector returned invalid JSON. Refusing to launch an agent."
 		return 1
 	fi

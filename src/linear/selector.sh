@@ -264,8 +264,194 @@ linear::selector:evaluate() {
 	' --argjson status "$status_tree" <<<"$issue_tree"
 }
 
-linear::selector:_canonicalize_render_input() {
+linear::selector:canonicalize() {
 	jq -c -s 'if length == 1 then .[0] else error("invalid selector JSON") end' 2>/dev/null <<<"$1"
+}
+
+linear::selector:_decision_record_thresholds() {
+	jq -nc '{
+		blocker_release_states: ["Worker Done", "Done", "Canceled", "Duplicate"],
+		worker_terminal_states: ["Worker Done", "Done"],
+		corrective_terminal_states: ["Worker Done", "Done"],
+		review_terminal_states: ["Done"]
+	}'
+}
+
+linear::selector:_fail_closed_decision_record() {
+	local task_id="$1"
+	local reason="$2"
+	local invalid_state="$3"
+	local thresholds
+	thresholds=$(linear::selector:_decision_record_thresholds)
+
+	jq -nc \
+		--arg task_id "$task_id" \
+		--arg reason "$reason" \
+		--arg invalid_state "$invalid_state" \
+		--argjson thresholds "$thresholds" '
+		{
+			version: 2,
+			task_id: $task_id,
+			mode: "needs_human_direction",
+			actor: "human",
+			prompt_mode: "needs_human_direction",
+			selected_issue: null,
+			review_target: null,
+			transition: {from: null, event: $invalid_state, to: "needs_human_direction"},
+			reason: $reason,
+			required_agent_config: "none",
+			sidecar_mode: "none",
+			gate: {issue: null, outcome: null, authorized_parent: null, authorized_issue_ids: []},
+			thresholds: $thresholds,
+			evidence: {
+				blocked_candidates: [],
+				unauthorized_backlog_candidates: [],
+				open_corrective: [],
+				open_review: [],
+				reviewed_worker_ids: [],
+				human_direction: null,
+				invalid_states: [$invalid_state]
+			},
+			runtime: {launch_agent: false, write_pause: true, write_complete: false, fail_closed: true},
+			terminal: {final_completion: false, task_complete: false, paused: false, stopped: false}
+		}
+	'
+}
+
+linear::selector:decision_record() {
+	local task_id="$1"
+	local raw_selection="$2"
+	local selection
+	local thresholds
+	thresholds=$(linear::selector:_decision_record_thresholds)
+
+	if ! selection=$(linear::selector:canonicalize "$raw_selection"); then
+		linear::selector:_fail_closed_decision_record "$task_id" "Selector JSON invalid" "invalid_selector_json"
+		return 0
+	fi
+
+	if ! jq -e '
+		def known_modes:
+			[
+				"planning",
+				"agent_issue_review",
+				"execution",
+				"corrective_resolution",
+				"post_execution_review",
+				"needs_human_direction",
+				"final_completion",
+				"task_complete",
+				"stopped",
+				"paused"
+			];
+		def selected_required:
+			["planning", "agent_issue_review", "execution", "corrective_resolution", "post_execution_review"];
+		.selected_mode as $mode |
+		(.selected_mode | type == "string")
+		and ((known_modes | index($mode)) != null)
+		and has("selected_issue")
+		and (((selected_required | index($mode)) | not) or .selected_issue != null)
+		and ($mode != "post_execution_review" or .review_target != null)
+	' >/dev/null 2>&1 <<<"$selection"; then
+		linear::selector:_fail_closed_decision_record "$task_id" "Selector state invalid" "invalid_selector_state"
+		return 0
+	fi
+
+	jq -c --arg task_id "$task_id" --argjson thresholds "$thresholds" '
+		def empty_to_null: if . == "" or . == null then null else . end;
+		def selected_issue_shape:
+			if . == null then null else {
+				identifier,
+				title,
+				state,
+				parent_identifier,
+				agent_role
+			} end;
+		def launch_modes:
+			["planning", "agent_issue_review", "execution", "corrective_resolution", "post_execution_review"];
+		def prompt_modes:
+			launch_modes + ["needs_human_direction"];
+		def actor($mode):
+			if $mode == "agent_issue_review" or $mode == "post_execution_review" then "reviewer"
+			elif $mode == "needs_human_direction" then "human"
+			elif $mode == "final_completion" then "runtime"
+			elif $mode == "task_complete" or $mode == "stopped" or $mode == "paused" then "none"
+			else "worker"
+			end;
+		def agent_config($mode):
+			if $mode == "agent_issue_review" or $mode == "post_execution_review" then "reviewer"
+			elif (launch_modes | index($mode)) then "worker"
+			else "none"
+			end;
+		def sidecar_mode($mode):
+			if $mode == "agent_issue_review" or $mode == "post_execution_review" then "review"
+			elif (launch_modes | index($mode)) then "worker"
+			else "none"
+			end;
+		def event($mode):
+			if $mode == "planning" then "open_planning_found"
+			elif $mode == "agent_issue_review" then "worker_exit_success"
+			elif $mode == "execution" then "authorized_worker_found"
+			elif $mode == "corrective_resolution" then "authorized_corrective_found"
+			elif $mode == "post_execution_review" then "execution_queue_empty"
+			elif $mode == "needs_human_direction" then "human_direction_required"
+			elif $mode == "final_completion" then "all_authorized_work_terminal"
+			elif $mode == "task_complete" then "complete_sentinel_found"
+			elif $mode == "stopped" then "operator_stop"
+			else "operator_pause"
+			end;
+		.selected_mode as $mode |
+		{
+			version: 2,
+			task_id: $task_id,
+			mode: $mode,
+			actor: actor($mode),
+			prompt_mode: (if (prompt_modes | index($mode)) then $mode else null end),
+			selected_issue: (.selected_issue | selected_issue_shape),
+			review_target: (if $mode == "post_execution_review" then .review_target else null end),
+			transition: {from: null, event: event($mode), to: $mode},
+			reason: (.eligibility_reason // "No selector reason recorded"),
+			required_agent_config: agent_config($mode),
+			sidecar_mode: sidecar_mode($mode),
+			gate: {
+				issue: null,
+				outcome: (if ((.authorized_parent // "") != "") then "ready_for_execution" else null end),
+				authorized_parent: (.authorized_parent | empty_to_null),
+				authorized_issue_ids: (.authorized_issue_ids // [])
+			},
+			thresholds: {
+				blocker_release_states: (.completion_threshold.blocker_release_states // $thresholds.blocker_release_states),
+				worker_terminal_states: $thresholds.worker_terminal_states,
+				corrective_terminal_states: $thresholds.corrective_terminal_states,
+				review_terminal_states: $thresholds.review_terminal_states
+			},
+			evidence: {
+				blocked_candidates: (.blocked_candidates // []),
+				unauthorized_backlog_candidates: (.unauthorized_backlog_candidates // []),
+				open_corrective: (.corrective_priority_evidence.open_corrective // []),
+				open_review: (.corrective_priority_evidence.open_review // []),
+				reviewed_worker_ids: (.reviewed_worker_ids // []),
+				human_direction: (.human_direction // null),
+				invalid_states: []
+			},
+			runtime: {
+				launch_agent: ((launch_modes | index($mode)) != null),
+				write_pause: ($mode == "needs_human_direction"),
+				write_complete: ($mode == "final_completion"),
+				fail_closed: false
+			},
+			terminal: {
+				final_completion: ($mode == "final_completion"),
+				task_complete: ($mode == "task_complete"),
+				paused: ($mode == "paused"),
+				stopped: ($mode == "stopped")
+			}
+		}
+	' <<<"$selection"
+}
+
+linear::selector:_canonicalize_render_input() {
+	linear::selector:canonicalize "$1"
 }
 
 linear::selector:render_summary() {

@@ -91,6 +91,7 @@ def test_post_execution_review_ends_after_one_agent_turn():
 def test_issues_file_wraps_column_output_in_text_fence():
     script = r'''
         source src/cmd/start.sh
+        source src/linear/selector.sh
 
         NANCY_CURRENT_TASK_DIR=$(mktemp -d)
         export NANCY_CURRENT_TASK_DIR
@@ -202,6 +203,7 @@ def test_selector_output_validation_rejects_trailing_parse_garbage():
 def test_create_issues_file_rejects_malformed_selector_before_loop_branch():
     script = r'''
         source src/cmd/start.sh
+        source src/linear/selector.sh
 
         NANCY_CURRENT_TASK_DIR=$(mktemp -d)
         export NANCY_CURRENT_TASK_DIR
