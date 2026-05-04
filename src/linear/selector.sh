@@ -121,8 +121,10 @@ linear::selector:evaluate() {
 		([try ($gate_text | capture("Execute(?: blockers only)?: (?<line>[^\n]+)").line | issue_ids[]) catch empty]) as $authorized_ids |
 		([ $children[] |
 			select(.parent_title == "Backlog") |
+			select(is_open_state) |
 			select(($authorized_parent == "") or ((.identifier as $id | $authorized_ids | index($id)) | not))
 		]) as $unauthorized |
+		(if ($accepted_gate != null and $authorized_parent != "") then $unauthorized else [] end) as $unauthorized_gate_defects |
 		([ $all[] |
 			select((.parent_identifier == $authorized_parent) and (.identifier as $id | $authorized_ids | index($id)))
 		]) as $authorized |
@@ -153,6 +155,7 @@ linear::selector:evaluate() {
 		(if ($too_deep | length) > 0 then "needs_human_direction"
 		elif ($open_planning | length) > 0 then "planning"
 		elif $open_gate_review != null then "planning"
+		elif ($unauthorized_gate_defects | length) > 0 then "needs_human_direction"
 		elif ($corrective_open | length) > 0 then "corrective_resolution"
 		elif (($execution_open | length) == 0 and ($human_direction_reviews | length) > 0) then "needs_human_direction"
 		elif (($execution_open | length) == 0 and $review_closed_with_unreviewed_target) then "needs_human_direction"
@@ -188,6 +191,8 @@ linear::selector:evaluate() {
 				(if $mode == "needs_human_direction" then
 					(if ($too_deep | length) > 0 then
 						"Hierarchy deeper than children and grandchildren requires human direction"
+					elif ($unauthorized_gate_defects | length) > 0 then
+						"Open Backlog issue exists outside accepted gate Execute list"
 					elif $review_closed_with_unreviewed_target then
 						"Post execution review issue closed before every worker issue was reviewed"
 					else
@@ -252,7 +257,7 @@ linear::selector:evaluate() {
 				} end
 			),
 			hierarchy_depth_supported: 2,
-			requires_human_direction: ((($too_deep | length) > 0) or (($human_direction_reviews | length) > 0) or $review_closed_with_unreviewed_target)
+			requires_human_direction: ((($too_deep | length) > 0) or (($unauthorized_gate_defects | length) > 0) or (($human_direction_reviews | length) > 0) or $review_closed_with_unreviewed_target)
 		}
 	' --argjson status "$status_tree" <<<"$issue_tree"
 }

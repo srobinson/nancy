@@ -197,6 +197,28 @@ def test_corrective_issue_outranks_post_execution_review():
     assert selected["corrective_priority_evidence"]["corrective_outranks_review"] is True
 
 
+def test_open_backlog_child_outside_accepted_gate_requires_human_direction():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "Implemented worker issue", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Corrective: Fix reviewed defect", sort=2),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_issue"] is None
+    assert selected["requires_human_direction"] is True
+    assert "outside accepted gate" in selected["eligibility_reason"]
+    assert selected["unauthorized_backlog_candidates"][0]["identifier"] == "ALP-3001"
+
+
 def test_post_execution_review_accepts_worker_done_blockers():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3002`"),
