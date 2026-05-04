@@ -18,6 +18,7 @@ cmd::stop() {
 
 	local task_dir="${NANCY_TASK_DIR}/${task}"
 	local pid_file="${task_dir}/.worker_pid"
+	local pause_file="${task_dir}/PAUSE"
 	local stop_file="${task_dir}/STOP"
 
 	sidecar::stop "$task" 2>/dev/null || true
@@ -41,6 +42,7 @@ cmd::stop() {
 
 	# Write STOP sentinel so the loop exits after pipeline returns
 	echo "Stopped at $(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$stop_file"
+	rm -f "$pause_file"
 
 	# Stop watchers
 	notify::stop_all_watchers "$task" 2>/dev/null || true

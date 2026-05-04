@@ -203,7 +203,8 @@ _start_wait_while_paused() {
 
 	echo ""
 	log::info "Paused for human direction."
-	ui::muted "Waiting for unpause... (Ctrl+C to stop)"
+	ui::muted "Resolve the blocker, then run: nancy unpause $task"
+	ui::muted "To stop the worker loop and return to the shell, run: nancy stop $task"
 
 	while [ -f "$pause_lock" ]; do
 		sleep 2
@@ -726,7 +727,7 @@ cmd::start() {
 	while :; do
 
 		# Create ISSUES.md and detect agent role from first uncompleted issue
-		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}"
+		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}" || return $?
 		local agent_role="${_NEXT_AGENT_ROLE:-}"
 		local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
 		local selection="${_NEXT_SELECTION:-{}}"

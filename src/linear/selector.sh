@@ -10,8 +10,8 @@ linear::selector:evaluate() {
 	jq '
 		def issue_ids: [scan("[A-Z]+-[0-9]+")];
 		def state_name: .state.name;
-		def is_selectable: state_name as $s | ["Todo", "In Progress"] | index($s);
-		def is_open_state: state_name as $s | ["Todo", "In Progress"] | index($s);
+		def is_selectable: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
+		def is_open_state: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
 		def is_accepted_state: state_name as $s | ["Worker Done", "Done"] | index($s);
 		def role:
 			([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // "");
@@ -264,8 +264,26 @@ linear::selector:evaluate() {
 	' --argjson status "$status_tree" <<<"$issue_tree"
 }
 
+linear::selector:_canonicalize_render_input() {
+	jq -c -s 'if length == 1 then .[0] else error("invalid selector JSON") end' 2>/dev/null <<<"$1"
+}
+
 linear::selector:render_summary() {
 	local selection="$1"
+
+	if ! selection=$(linear::selector:_canonicalize_render_input "$selection"); then
+		cat <<'EOF'
+## Selector Decision
+
+* Mode: `invalid_selector`
+* Selected issue: none
+* Reason: Selector JSON invalid
+
+ISSUES.md is selector evidence only. Linear selection above is authoritative.
+
+EOF
+		return 0
+	fi
 
 	jq -r '
 		"## Selector Decision",
@@ -283,6 +301,15 @@ linear::selector:render_summary() {
 linear::selector:render_blocker() {
 	local selection="$1"
 
+	if ! selection=$(linear::selector:_canonicalize_render_input "$selection"); then
+		cat <<'EOF'
+BLOCKER: Selector JSON invalid
+
+Nancy could not render the selector blocker because the selector JSON was malformed.
+EOF
+		return 0
+	fi
+
 	jq -r '
 		"BLOCKER: Needs human direction",
 		"",
@@ -299,6 +326,19 @@ linear::selector:render_blocker() {
 
 linear::selector:render_prompt_context() {
 	local selection="$1"
+
+	if ! selection=$(linear::selector:_canonicalize_render_input "$selection"); then
+		cat <<'EOF'
+## Selected Work
+
+- Mode: `invalid_selector`
+- Issue: none
+- Eligibility: Selector JSON invalid
+
+Do not infer authority from ISSUES.md checkbox order.
+EOF
+		return 0
+	fi
 
 	jq -r '
 		if .selected_issue then

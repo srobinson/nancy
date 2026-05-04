@@ -239,6 +239,65 @@ def test_create_issues_file_rejects_malformed_selector_before_loop_branch():
     _run_review_mode_script(script)
 
 
+def test_start_stops_when_selector_issue_file_creation_fails():
+    script = r'''
+        source src/cmd/start.sh
+
+        NANCY_DIR=$(mktemp -d)
+        NANCY_TASK_DIR=$(mktemp -d)
+        NANCY_CURRENT_TASK_DIR="$NANCY_TASK_DIR/ALP-1"
+        export NANCY_DIR NANCY_TASK_DIR NANCY_CURRENT_TASK_DIR
+        mkdir -p "$NANCY_CURRENT_TASK_DIR"
+
+        task::count_sessions() {
+            printf '0\n'
+        }
+        _start_clear_stale_sentinels() {
+            :
+        }
+        _start_fetch_linear_context() {
+            local -n project_ref=$2
+            project_ref[id]="project-1"
+            project_ref[identifier]="ALP-1"
+            project_ref[title]="Project"
+            project_ref[description]=""
+        }
+        _start_setup_worktree() {
+            local -n worktree_ref=$2
+            worktree_ref[dir]="."
+        }
+        config::get_agent() {
+            printf 'bash\n'
+        }
+        cli::current() {
+            printf 'bash\n'
+        }
+        deps::exists() {
+            return 0
+        }
+        _start_print_start_info() {
+            :
+        }
+        _start_create_issues_file() {
+            return 1
+        }
+        _start_handle_null_selection() {
+            echo "null selection handler should not run"
+            exit 1
+        }
+
+        cmd::start ALP-1
+        status=$?
+
+        if [[ "$status" -ne 1 ]]; then
+            echo "expected status 1, got $status"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
 def test_null_selection_check_rejects_invalid_json_without_jq_parse_noise():
     script = r'''
         source src/cmd/start.sh
@@ -331,6 +390,121 @@ def test_needs_human_direction_pauses_without_completion():
         if [[ "$output" != *"BLOCKER: Needs human direction"* || "$output" != *"Outcome: Needs human direction"* ]]; then
             echo "blocker output missing"
             printf '%s\n' "$output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_needs_human_direction_malformed_selector_does_not_leak_jq_parse_error():
+    script = r'''
+        source src/cmd/start.sh
+        source src/task/task.sh
+        source src/linear/selector.sh
+
+        NANCY_TASK_DIR=$(mktemp -d)
+        export NANCY_TASK_DIR
+        mkdir -p "$NANCY_TASK_DIR/ALP-1"
+
+        selection='{"selected_mode":"needs_human_direction","selected_issue":null,"eligibility_reason":"Needs human direction","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"Worker Done","blocker":"Outcome: Needs human direction."}}
+}'
+
+        output=$(_start_handle_null_selection ALP-1 project-1 needs_human_direction "$selection" 2>&1)
+        status=$?
+
+        if [[ "$status" -ne 2 ]]; then
+            echo "expected status 2, got $status"
+            exit 1
+        fi
+        if [[ "$output" == *"jq: parse error"* ]]; then
+            echo "jq parse noise leaked"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+        if [[ "$output" != *"BLOCKER: Selector JSON invalid"* ]]; then
+            echo "missing invalid selector blocker"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_pause_wait_message_names_resume_and_stop_commands():
+    script = r'''
+        source src/cmd/start.sh
+
+        log::info() {
+            printf 'INFO %s\n' "$*"
+        }
+        ui::muted() {
+            printf '%s\n' "$*"
+        }
+
+        NANCY_TASK_DIR=$(mktemp -d)
+        export NANCY_TASK_DIR
+        mkdir -p "$NANCY_TASK_DIR/ALP-1"
+        touch "$NANCY_TASK_DIR/ALP-1/PAUSE"
+
+        (sleep 0.1; rm -f "$NANCY_TASK_DIR/ALP-1/PAUSE") &
+        output=$(_start_wait_while_paused ALP-1)
+        wait
+
+        if [[ "$output" != *"nancy unpause ALP-1"* ]]; then
+            echo "missing unpause command"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+        if [[ "$output" != *"nancy stop ALP-1"* ]]; then
+            echo "missing stop command"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+        if [[ "$output" == *"Ctrl+C to stop"* ]]; then
+            echo "old ctrl-c wording still present"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_stop_removes_pause_lock_to_release_paused_worker():
+    script = r'''
+        source src/cmd/stop.sh
+
+        NANCY_TASK_DIR=$(mktemp -d)
+        export NANCY_TASK_DIR
+        mkdir -p "$NANCY_TASK_DIR/ALP-1"
+        touch "$NANCY_TASK_DIR/ALP-1/PAUSE"
+
+        task::exists() {
+            return 0
+        }
+        sidecar::stop() {
+            :
+        }
+        notify::stop_all_watchers() {
+            :
+        }
+        ui::muted() {
+            :
+        }
+        ui::success() {
+            :
+        }
+
+        cmd::stop ALP-1
+
+        if [[ ! -f "$NANCY_TASK_DIR/ALP-1/STOP" ]]; then
+            echo "STOP was not created"
+            exit 1
+        fi
+        if [[ -f "$NANCY_TASK_DIR/ALP-1/PAUSE" ]]; then
+            echo "PAUSE should be removed by stop"
             exit 1
         fi
     '''
