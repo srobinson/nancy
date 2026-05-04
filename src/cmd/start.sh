@@ -9,6 +9,7 @@ _NANCY_CURRENT_SIDECAR_SESSION=""
 _NEXT_SELECTOR_PROMPT_CONTEXT=""
 _NEXT_PROMPT_MODE="execution"
 _NEXT_SELECTION=""
+_NEXT_SELECTION_HAS_ISSUE="false"
 
 _start_cleanup() {
 	echo ""
@@ -81,8 +82,13 @@ _start_create_issues_file() {
 	local sub_issue_statuses=$(
 		linear::issue:sub:statuses "$project_id"
 	)
+	local raw_selection
+	raw_selection=$(linear::selector:evaluate "$sub_issues" "$sub_issue_statuses")
 	local selection
-	selection=$(linear::selector:evaluate "$sub_issues" "$sub_issue_statuses")
+	if ! selection=$(jq -c '.' 2>/dev/null <<<"$raw_selection"); then
+		log::error "Linear selector returned invalid JSON. Refusing to launch an agent."
+		return 1
+	fi
 	_start_validate_selector_output "$selection" || return 1
 
 	cat <<EOF >"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
@@ -122,6 +128,7 @@ EOF
 
 	_NEXT_AGENT_ROLE=$(jq -r '.selected_issue.agent_role // ""' <<<"$selection")
 	_NEXT_PROMPT_MODE=$(jq -r '.selected_mode // "execution"' <<<"$selection")
+	_NEXT_SELECTION_HAS_ISSUE=$(jq -r 'if .selected_issue == null then "false" else "true" end' <<<"$selection")
 	_NEXT_SELECTOR_PROMPT_CONTEXT=$(linear::selector:render_prompt_context "$selection")
 	_NEXT_SELECTION="$selection"
 }
@@ -723,6 +730,7 @@ cmd::start() {
 		local agent_role="${_NEXT_AGENT_ROLE:-}"
 		local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
 		local selection="${_NEXT_SELECTION:-{}}"
+		local selection_has_issue="${_NEXT_SELECTION_HAS_ISSUE:-false}"
 		local active_agent_config_role="worker"
 		local active_cli="$worker_cli"
 		local active_sidecar_mode="worker"
@@ -732,10 +740,7 @@ cmd::start() {
 			return $?
 		fi
 
-		local no_issue_status=0
-		_start_selection_has_no_issue "$selection" || no_issue_status=$?
-		case "$no_issue_status" in
-		0)
+		if [[ "$selection_has_issue" != "true" ]]; then
 			local null_selection_status=0
 			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection" || null_selection_status=$?
 			case "$null_selection_status" in
@@ -750,13 +755,7 @@ cmd::start() {
 				return "$null_selection_status"
 				;;
 			esac
-			;;
-		1)
-			;;
-		*)
-			return "$no_issue_status"
-			;;
-		esac
+		fi
 
 		if [[ -n "$agent_role" ]]; then
 			log::info "Agent role: ${agent_role}"

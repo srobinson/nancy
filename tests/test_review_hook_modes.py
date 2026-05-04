@@ -199,6 +199,46 @@ def test_selector_output_validation_rejects_trailing_parse_garbage():
     _run_review_mode_script(script)
 
 
+def test_create_issues_file_rejects_malformed_selector_before_loop_branch():
+    script = r'''
+        source src/cmd/start.sh
+
+        NANCY_CURRENT_TASK_DIR=$(mktemp -d)
+        export NANCY_CURRENT_TASK_DIR
+
+        log::error() {
+            printf '%s\n' "$*"
+        }
+        linear::issue:sub() {
+            printf '{"data":{"issues":{"nodes":[]}}}'
+        }
+        linear::issue:sub:statuses() {
+            printf '{"data":{"issues":{"nodes":[]}}}'
+        }
+        linear::selector:evaluate() {
+            printf '{"selected_mode":"execution","selected_issue":{"identifier":"ALP-1"}}\n}'
+        }
+
+        output=$(_start_create_issues_file ALP-1 project-1 ALP-1 "Project" 2>&1)
+        status=$?
+
+        if [[ "$status" -eq 0 ]]; then
+            echo "malformed selector should fail"
+            exit 1
+        fi
+        if [[ "$output" != *"Linear selector returned invalid JSON"* ]]; then
+            echo "missing selector error: $output"
+            exit 1
+        fi
+        if [[ "$output" == *"jq: parse error"* ]]; then
+            echo "jq parse noise leaked"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
 def test_null_selection_check_rejects_invalid_json_without_jq_parse_noise():
     script = r'''
         source src/cmd/start.sh
