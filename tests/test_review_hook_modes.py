@@ -179,6 +179,57 @@ def test_null_selection_final_completion_marks_task_complete():
     _run_review_mode_script(script)
 
 
+def test_selector_output_validation_rejects_trailing_parse_garbage():
+    script = r'''
+        source src/cmd/start.sh
+
+        log::error() {
+            printf '%s\n' "$*"
+        }
+
+        selection='{"selected_mode":"corrective_resolution","selected_issue":{"identifier":"ALP-1"}}
+}'
+
+        if _start_validate_selector_output "$selection"; then
+            echo "selector validation should reject trailing garbage"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_null_selection_check_rejects_invalid_json_without_jq_parse_noise():
+    script = r'''
+        source src/cmd/start.sh
+
+        log::error() {
+            printf '%s\n' "$*"
+        }
+
+        selection='{"selected_mode":"corrective_resolution","selected_issue":{"identifier":"ALP-1"}}
+}'
+
+        output=$(_start_selection_has_no_issue "$selection" 2>&1)
+        status=$?
+
+        if [[ "$status" -ne 2 ]]; then
+            echo "expected status 2, got $status"
+            exit 1
+        fi
+        if [[ "$output" == *"jq: parse error"* ]]; then
+            echo "jq parse noise leaked"
+            exit 1
+        fi
+        if [[ "$output" != *"Linear selector JSON became invalid"* ]]; then
+            echo "missing clear selector error: $output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
 def test_null_selection_without_final_completion_stops_before_agent_launch():
     script = r'''
         source src/cmd/start.sh

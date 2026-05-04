@@ -83,6 +83,7 @@ _start_create_issues_file() {
 	)
 	local selection
 	selection=$(linear::selector:evaluate "$sub_issues" "$sub_issue_statuses")
+	_start_validate_selector_output "$selection" || return 1
 
 	cat <<EOF >"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 # [$project_identifier] $project_title
@@ -125,10 +126,32 @@ EOF
 	_NEXT_SELECTION="$selection"
 }
 
-_start_selection_has_no_issue() {
+_start_validate_selector_output() {
 	local selection="$1"
 
-	jq -e '.selected_issue == null' >/dev/null <<<"$selection"
+	if jq -e -s '
+		length == 1
+		and (.[0] | type == "object")
+		and (.[0].selected_mode | type == "string")
+		and (.[0] | has("selected_issue"))
+	' >/dev/null 2>&1 <<<"$selection"; then
+		return 0
+	fi
+
+	log::error "Linear selector returned invalid JSON. Refusing to launch an agent."
+	return 1
+}
+
+_start_selection_has_no_issue() {
+	local selection="$1"
+	local has_no_issue
+
+	if ! has_no_issue=$(jq -er 'if .selected_issue == null then "true" else "false" end' 2>/dev/null <<<"$selection"); then
+		log::error "Linear selector JSON became invalid before null selection check. Refusing to launch an agent."
+		return 2
+	fi
+
+	[[ "$has_no_issue" == "true" ]]
 }
 
 _start_handle_null_selection() {
@@ -709,7 +732,10 @@ cmd::start() {
 			return $?
 		fi
 
-		if _start_selection_has_no_issue "$selection"; then
+		local no_issue_status=0
+		_start_selection_has_no_issue "$selection" || no_issue_status=$?
+		case "$no_issue_status" in
+		0)
 			local null_selection_status=0
 			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection" || null_selection_status=$?
 			case "$null_selection_status" in
@@ -724,7 +750,13 @@ cmd::start() {
 				return "$null_selection_status"
 				;;
 			esac
-		fi
+			;;
+		1)
+			;;
+		*)
+			return "$no_issue_status"
+			;;
+		esac
 
 		if [[ -n "$agent_role" ]]; then
 			log::info "Agent role: ${agent_role}"
