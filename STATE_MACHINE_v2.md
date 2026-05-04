@@ -1,317 +1,146 @@
 # Nancy State Machine v2
 
-Status: proposal.
+Status: ALP-2359 planning contract, pending ALP-2364 gate review.
 
-This document defines the target centralized state machine for Nancy's gate
-aware Linear loop. It complements `TMP/STATE_MACHINE.md`, which records current
-behavior. The goal here is a durable contract that other projects and
-`linear-workflows` can integrate against.
+This document defines the centralized decision contract for Bash Nancy's gate
+aware Linear loop. It replaces scattered workflow ownership across selector jq,
+runner globals, prompt rendering, sentinels, sidecar state, Linear comments, and
+review instructions with one explicit decision boundary.
 
-## Why This Exists
+The active runtime is Bash Nancy. The removed Rust live path is design evidence
+only. A future Rust successor must preserve the same contract before changing
+supervision mechanics.
 
-Nancy now works, but the workflow contract is split across:
+## Contract Boundary
 
-- `src/linear/selector.sh`: graph classification, mode selection, gate parsing,
-  review target derivation, blocker checks, evidence.
-- `src/cmd/start.sh`: runtime loop, prompt mode routing, reviewer handoff,
-  null selection handling, pause and completion behavior.
-- `src/sidecar/sidecar.sh`: worker process observation, handover requests,
-  `<END_TURN>` detection, sidecar rotation state.
-- `templates/modes/*.md.template`: agent behavior constraints.
-- Linear issue descriptions and comments: accepted gate text, review outcome
-  markers, human direction markers.
-- Task files: `ISSUES.md`, `HANDOVER.md`, `PAUSE`, `STOP`, `COMPLETE`,
-  `.worker_completed`, `.worker_pid`, `.sidecar_session`.
-
-The failure mode is repeated recomputation. Each component owns a slice of the
-truth, so small inconsistencies can create loops, false completion, or workers
-that do not rotate after ending their turn.
-
-v2 creates one boundary:
+Nancy evaluates one loop with this boundary:
 
 ```text
-ObservedState
-  -> ClassifiedGraph
-  -> DecisionRecord
-  -> prompt rendering, agent launch, sidecar policy, evidence files
+ObservedState -> ClassifiedGraph -> DecisionRecord -> RuntimeActions
 ```
 
-## Non Negotiables
+Only `ClassifiedGraph` parses Linear titles, labels, descriptions, states,
+relations, comments, and task sentinels. Prompt rendering, `ISSUES.md`, agent
+launch, sidecar launch, pause handling, stop handling, completion, and operator
+messages consume `DecisionRecord`.
 
-- Linear remains the durable source of truth for issue state and planning truth.
-- Nancy mode is separate from Linear issue state.
-- `ISSUES.md` is evidence and prompt context. It is not authority.
-- Agents work one selected issue or review target per turn.
-- `needs_human_direction` must not close the master parent or write `COMPLETE`.
-- `final_completion` must be explicit. It must not be inferred from stale local
-  files.
-- Sidecar rotation state is process control, not workflow completion.
+## Sources Of Truth
 
-## Mode Vocabulary
+Linear is durable authority for:
 
-Keep the existing names:
+- issue graph shape, parentage, dependencies, blockers, labels, and state
+- planning issue state and review acceptance
+- gate review outcome and authorized execution set
+- worker, corrective, and post execution review terminal state
+- comments that mark reviewed workers
+- comments that record `Needs human direction` or `Human direction:`
+- final parent issue state
 
-```text
-planning
-agent_issue_review
-execution
-corrective_resolution
-post_execution_review
-needs_human_direction
-final_completion
-```
-
-`final_completion` is a selector result, not an agent prompt.
-
-`agent_issue_review` is currently a runtime follow up after `planning`. In v2 it
-becomes a first class transition so routing does not live only in `start.sh`.
-
-## Observed State
-
-The state machine consumes read only observations.
-
-```text
-ObservedState
-  task_id
-  parent_issue
-  open_graph
-  status_graph
-  task_runtime
-  last_turn_event
-  config
-```
-
-`open_graph` is the current open Linear issue tree.
-
-`status_graph` includes terminal issues needed for audit, especially `Done`
-review issues and comments.
-
-`task_runtime` includes:
-
-- `STOP` exists.
-- `PAUSE` exists.
-- `COMPLETE` exists.
-- `.worker_completed` exists.
-- `.worker_pid` exists and process liveness.
-- `.sidecar_session` exists and tmux session liveness.
-- single run mode.
-- worker and reviewer CLI config.
-
-`last_turn_event` records what just happened:
-
-```text
-worker_exit_success
-worker_exit_failure
-sidecar_completion_rotation
-operator_stop
-operator_pause
-planning_worker_finished
-reviewer_finished
-```
-
-## Classified Graph
-
-Classification is the only place that parses Linear titles, labels,
-descriptions, states, relations, and comments.
-
-```text
-ClassifiedGraph
-  direct_issues
-  child_issues
-  unsupported_hierarchy
-  open_planning
-  open_gate_review
-  accepted_gate
-  authorized_parent
-  authorized_issue_ids
-  authorized_issues
-  missing_authorized_status
-  open_execution
-  open_corrective
-  open_post_execution_review
-  reviewed_worker_ids
-  review_target
-  unresolved_human_direction
-  review_closed_with_unreviewed_target
-  final_ready
-  blocked_candidates
-  unauthorized_backlog_candidates
-```
-
-Every downstream caller consumes these facts instead of repeating regexes or
-state checks.
-
-## Role Policy
-
-| Role | Detection |
-| --- | --- |
-| `backlog_parent` | title equals `Backlog` |
-| `gate_review` | title matches `Gate review` or `execution readiness` |
-| `corrective` | label `Corrective` or title contains `corrective` |
-| `post_execution_review` | label `Post Execution Review` or title matches `^post[ -]execution review` |
-| `planning` | direct open issue that is not backlog and not gate review |
-| `execution` | authorized issue that is not corrective and not post execution review |
-
-## Gate Policy
-
-A gate is accepted only when:
-
-- No open planning issue remains.
-- No open gate review issue remains.
-- A gate review issue is in `Worker Done` or `Done`.
-- Its description contains one accepted outcome:
-  - `Outcome: Ready for execution`
-  - `Outcome: Pre execution blockers required`
-- Its description names one authorized parent in backticks.
-- Its description lists authorized issue IDs.
-
-Legacy accepted text:
-
-```text
-Planning complete. Outcome: Ready for execution.
-Authorized execution parent: `ISSUE-ID`.
-Execute: ISSUE-ID, ISSUE-ID.
-```
-
-or:
-
-```text
-Planning complete. Outcome: Pre execution blockers required.
-Authorized blocker parent: `ISSUE-ID`.
-Execute blockers only: ISSUE-ID, ISSUE-ID.
-```
-
-v2 should also write a structured block while continuing to read legacy text:
-
-```text
-Nancy-Gate:
-  outcome: ready_for_execution
-  authorized_parent: ISSUE-ID
-  execute:
-    - ISSUE-ID
-    - ISSUE-ID
-```
-
-## Review Outcome Policy
-
-Post execution review is one target per turn.
-
-The selected review issue is the open authorized post execution review issue.
-The selected `review_target` is the first authorized worker issue, ordered by
-`subIssueSortOrder`, that is accepted and not yet reviewed.
-
-Accepted worker states:
-
-```text
-Worker Done
-Done
-```
-
-A worker is reviewed only when the selected review issue has a comment line that
-starts with:
-
-```text
-Reviewed worker issue: ISSUE-ID
-```
-
-Informal comments do not count.
-
-If a review finds a defect, the agent creates a corrective issue, comments the
-review outcome, and ends the turn. The next graph evaluation selects
-`corrective_resolution` before any further post execution review.
-
-If review needs Stuart, the agent records `Needs human direction` and ends the
-turn. The loop pauses instead of completing.
-
-Human direction is released only by a later direction event containing:
-
-```text
-Human direction:
-```
-
-## Blocker Policy
-
-The current selector releases blockers in these states:
-
-```text
-Worker Done
-Done
-Canceled
-Duplicate
-```
-
-v2 should keep blocker release policy as named data in the decision record.
-
-Final acceptance is role specific:
-
-| Role | Terminal for final completion |
-| --- | --- |
-| worker issue | `Worker Done` or `Done` |
-| corrective issue | `Worker Done` or `Done` |
-| post execution review issue | `Done` |
-| gate review issue | `Worker Done` or `Done` |
-
-Final completion also requires no remaining `review_target`.
-
-## Runtime Sentinel Policy
-
-Local files are process control, not planning truth.
+Local Nancy files are operational state:
 
 | File | Meaning |
 | --- | --- |
+| `ISSUES.md` | generated selector evidence and prompt context |
+| `HANDOVER.md` | relay coordination only |
+| `PAUSE` | loop must not launch another worker turn yet |
 | `STOP` | operator requested loop exit after current pipeline returns |
-| `PAUSE` | loop waits before launching next iteration |
-| `COMPLETE` | local Nancy task completion after selector `final_completion` |
-| `.worker_completed` | sidecar saw completion output and rotated the process |
-| `.worker_pid` | current worker process |
-| `.sidecar_session` | current tmux sidecar session |
+| `COMPLETE` | local task completion after selector `final_completion` |
+| `.worker_completed` | sidecar observed turn exit and rotated the worker |
+| `.worker_pid` | active foreground worker process |
+| `.sidecar_session` | active tmux sidecar session |
 
-`COMPLETE` must be written only by final completion handling.
+`ISSUES.md` and checkboxes never authorize work. `PAUSE`, `STOP`, and
+`.worker_completed` never complete a workflow. `COMPLETE` is written only by
+the `final_completion` runtime action.
 
-`.worker_completed` must never be treated as task completion. It only normalizes
-nonzero exits caused by sidecar rotation.
+## State Vocabulary
 
-At the start of a fresh `nancy go`, stale `STOP` and `COMPLETE` are cleared
-before Linear is evaluated.
+Workflow modes:
 
-## Turn Exit Policy
+| Mode | Actor | Selected issue | Purpose |
+| --- | --- | --- | --- |
+| `planning` | worker | direct planning or gate review issue | author or repair planning state |
+| `agent_issue_review` | reviewer | planning issue just authored | review planning output |
+| `execution` | worker | authorized worker issue | implement accepted work |
+| `corrective_resolution` | worker | authorized corrective issue | fix a reviewed defect |
+| `post_execution_review` | reviewer | authorized review issue | review exactly one accepted worker target |
+| `needs_human_direction` | human | none | pause automation for explicit Linear direction |
+| `final_completion` | runtime | none | close the master after all authorized work is terminal |
+| `task_complete` | none | none | local task is complete and loop exits |
+| `stopped` | none | none | operator stopped the loop |
+| `paused` | none | none | local process wait state |
 
-The appended runtime Turn Exit instruction is part of Nancy's control protocol.
-It survives skill specific confirmation steps.
+`CODE_COMPLETE` is not a local sentinel and not a launch mode in v2. The
+contract keeps `execution_queue_empty` as an event that can lead to post
+execution review or final completion. Existing prompt text can mention code
+complete as a human concept, but no file named `CODE_COMPLETE` should be added.
 
-If a skill says to report a path or status, the agent does that first, then
-prints the required turn exit marker:
+## Events
 
-```text
-<END_TURN>
-```
+Linear graph events:
 
-or, for Claude prompts that require backticks:
+- `open_planning_found`
+- `open_gate_review_found`
+- `accepted_gate_found`
+- `multiple_accepted_gates_found`
+- `authorized_worker_found`
+- `authorized_corrective_found`
+- `authorized_review_found`
+- `unauthorized_backlog_found`
+- `unsupported_hierarchy_found`
+- `blocker_unreleased`
+- `execution_queue_empty`
+- `review_target_found`
+- `review_marker_found`
+- `review_closed_with_unreviewed_target`
+- `unresolved_human_direction_found`
+- `human_direction_released`
+- `all_authorized_work_terminal`
 
-```text
-`<END_TURN>`
-```
+Runtime events:
 
-The sidecar must detect common UI prefixes and summaries, including:
+- `fresh_start`
+- `worker_exit_success`
+- `worker_exit_failure`
+- `reviewer_exit_success`
+- `reviewer_exit_failure`
+- `sidecar_completion_rotation`
+- `operator_pause`
+- `operator_unpause`
+- `operator_stop`
+- `single_run_requested`
+- `invalid_selector_json`
 
-```text
-<END_TURN>
-`<END_TURN>`
-<glyph> <END_TURN>
-Log saved:
-Session summary:
-Worked for
-Cooked for
-```
+## Actions And Side Effects
+
+Decision actions:
+
+| Action | Side effects |
+| --- | --- |
+| `render_prompt` | write `PROMPT.<task>.md` from `DecisionRecord` |
+| `render_issues` | write selector summary and issue table to `ISSUES.md` |
+| `launch_worker` | run worker config, sidecar mode `worker`, write `.worker_pid` |
+| `launch_reviewer` | run reviewer config, sidecar mode `review`, write `.worker_pid` |
+| `write_pause` | write `PAUSE`, print blocker, do not write `COMPLETE` |
+| `wait_pause` | block while `PAUSE` exists |
+| `clear_pause` | remove `PAUSE` only |
+| `write_stop` | stop sidecar, kill worker if present, write `STOP`, remove `PAUSE` |
+| `exit_stopped` | remove observed `STOP`, stop watchers, exit loop |
+| `write_complete` | mark parent `Worker Done`, write `COMPLETE`, print task complete |
+| `normalize_rotation` | treat sidecar driven nonzero exit as success, remove `.worker_completed` |
+| `fail_closed` | refuse launch, print explicit evidence, leave Linear unchanged |
+
+Fresh `nancy go` clears stale `STOP` and `COMPLETE` before Linear evaluation.
+It does not clear `PAUSE`; pausing is operator intent.
 
 ## Decision Record
 
-The state machine emits one JSON object per evaluation.
+The selector must emit one JSON object per evaluation:
 
 ```json
 {
   "version": 2,
-  "task_id": "ALP-2155",
+  "task_id": "ALP-2359",
   "mode": "post_execution_review",
   "actor": "reviewer",
   "prompt_mode": "post_execution_review",
@@ -335,13 +164,17 @@ The state machine emits one JSON object per evaluation.
   "reason": "Post execution review is eligible after execution and corrective queues are clear",
   "required_agent_config": "reviewer",
   "sidecar_mode": "review",
-  "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"],
-  "final_acceptance_states": ["Done"],
   "gate": {
-    "issue": "ALP-2220",
+    "issue": "ALP-2364",
     "outcome": "ready_for_execution",
-    "authorized_parent": "ALP-2226",
-    "authorized_issue_ids": ["ALP-2325", "ALP-2326", "ALP-2330"]
+    "authorized_parent": "ALP-2365",
+    "authorized_issue_ids": ["ALP-2401", "ALP-2402"]
+  },
+  "thresholds": {
+    "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"],
+    "worker_terminal_states": ["Worker Done", "Done"],
+    "corrective_terminal_states": ["Worker Done", "Done"],
+    "review_terminal_states": ["Done"]
   },
   "evidence": {
     "blocked_candidates": [],
@@ -349,206 +182,308 @@ The state machine emits one JSON object per evaluation.
     "open_corrective": [],
     "open_review": ["ALP-2330"],
     "reviewed_worker_ids": ["ALP-2325"],
-    "human_direction": null
+    "human_direction": null,
+    "invalid_states": []
   },
   "runtime": {
     "launch_agent": true,
     "write_pause": false,
     "write_complete": false,
-    "clear_stale_stop_and_complete": false
+    "fail_closed": false
   }
 }
 ```
 
-Prompt rendering, `ISSUES.md`, sidecar launch, reviewer routing, logs, and
-operator output consume this record. They do not recompute ownership.
+All downstream rendering and launch code consumes this record. No downstream
+component reparses Linear prose or recomputes workflow authority.
 
-## Graph Priority
+## Classification Rules
 
-The graph reducer chooses in this order:
+Role detection:
 
-| Priority | Guard | Mode | Actor |
-| --- | --- | --- | --- |
-| 1 | unsupported hierarchy exists | `needs_human_direction` | human |
-| 2 | open planning issue exists | `planning` | worker |
-| 3 | open gate review issue exists | `planning` | worker |
-| 4 | open authorized corrective issue exists | `corrective_resolution` | worker |
-| 5 | execution clear and unresolved human direction exists | `needs_human_direction` | human |
-| 6 | review issue closed before all workers reviewed | `needs_human_direction` | human |
-| 7 | execution and corrective queues clear, open review issue exists | `post_execution_review` | reviewer |
-| 8 | all authorized issues terminal and no review target remains | `final_completion` | runtime |
-| 9 | accepted gate has authorized IDs | `execution` | worker |
-| 10 | fallback | `planning` | worker |
+| Role | Detection |
+| --- | --- |
+| `backlog_parent` | title equals `Backlog` |
+| `gate_review` | title matches `Gate review` or `execution readiness` |
+| `corrective` | label `Corrective` or title contains `corrective` |
+| `post_execution_review` | label `Post Execution Review`, matching title, or matching description marker |
+| `planning` | direct open issue that is not Backlog and not gate review |
+| `execution` | authorized issue that is not corrective and not review |
 
-`post_execution_review` actor is the desired v2 owner. The current Bash runtime
-may still launch it through worker config during migration. The decision record
-should make that mismatch visible until routing is centralized.
+Selectable states are `Backlog`, `Todo`, and `In Progress`.
 
-## Turn Event Priority
+`In Progress` remains selectable for Bash MVP compatibility because Nancy does
+not yet have a durable per issue lease. v2 should mark it as recovery evidence
+when no active process owns the selected issue. A future lease can restrict
+ordinary selection to `Backlog` and `Todo`.
 
-After a launched agent exits, runtime events are handled before graph
-evaluation:
+Accepted worker and corrective states are `Worker Done` and `Done`. A post
+execution review issue is final only in `Done`.
 
-| Current mode | Event | Decision |
+Blockers are released by `Worker Done`, `Done`, `Canceled`, or `Duplicate`.
+
+## Gate Policy
+
+A gate is accepted only when:
+
+- no open planning issue remains
+- no open gate review issue remains
+- exactly one gate review issue is accepted
+- the accepted gate records one outcome
+- the accepted gate names one authorized parent
+- the accepted gate records a closed authorized issue set
+
+Accepted outcomes:
+
+```text
+ready_for_execution
+pre_execution_blockers_required
+needs_human_direction
+```
+
+Structured v2 evidence:
+
+```text
+Nancy-Gate:
+  outcome: ready_for_execution
+  authorized_parent: ALP-2365
+  execute:
+    - ALP-2401
+    - ALP-2402
+```
+
+Legacy Bash evidence remains readable during migration:
+
+```text
+Planning complete. Outcome: Ready for execution.
+Authorized execution parent: `ALP-2365`.
+Execute: ALP-2401, ALP-2402.
+```
+
+When both forms exist, structured evidence wins. If they disagree, select
+`needs_human_direction`.
+
+Multiple accepted gate review issues are invalid. Nancy must select
+`needs_human_direction` and name the conflicting gate issue identifiers.
+
+The accepted `execute` list is closed authority. Open Backlog children outside
+that set are invalid until the gate is repaired.
+
+## Transition Priority
+
+The graph reducer chooses the first matching guard:
+
+| Priority | Guard | Mode |
 | --- | --- | --- |
-| any | `STOP` exists | stop loop |
-| any | `PAUSE` exists | wait |
-| any | sidecar completion rotation | normalize exit, clear `.worker_completed`, evaluate graph |
-| `planning` | success and reviewer configured | `agent_issue_review` |
-| `planning` | success and reviewer missing | configuration error |
-| `planning` | failure | stop with failure evidence |
-| `agent_issue_review` | success | evaluate graph |
-| `execution` | success | evaluate graph |
-| `corrective_resolution` | success | evaluate graph |
-| `post_execution_review` | success | evaluate graph |
+| 1 | invalid selector JSON or malformed decision | fail closed |
+| 2 | unsupported hierarchy exists | `needs_human_direction` |
+| 3 | multiple accepted gates exist | `needs_human_direction` |
+| 4 | open planning issue exists | `planning` |
+| 5 | open gate review issue exists | `planning` |
+| 6 | accepted gate authorizes parent but open Backlog issue is outside `execute` | `needs_human_direction` |
+| 7 | open authorized corrective issue exists | `corrective_resolution` |
+| 8 | execution queue empty and unresolved review direction exists | `needs_human_direction` |
+| 9 | review issue closed before all workers were reviewed | `needs_human_direction` |
+| 10 | execution and corrective queues clear, open review issue exists | `post_execution_review` |
+| 11 | all authorized work terminal and no review target remains | `final_completion` |
+| 12 | accepted gate has authorized worker IDs | `execution` |
+| 13 | fallback | `planning` |
 
-## Bash Migration
+This priority preserves ALP-2155: authorized corrective work outranks an
+unresolved post execution review pause. It also preserves ALP-2323: when no
+authorized corrective work is available, unresolved review direction pauses
+automation instead of launching repeated review turns.
 
-Add a state module without changing behavior first:
+## Review Policy
 
-```text
-src/state/index.sh
-src/state/machine.sh
-src/state/policies.sh
-src/state/render.sh
-```
+Post execution review is one target per turn.
 
-Suggested functions:
+The selected review issue is the first open authorized review issue. The
+selected `review_target` is the first authorized worker issue that:
 
-```bash
-state::machine::decide "$issue_tree" "$status_tree" "$runtime_json" "$event_json"
-state::machine::classify_graph "$issue_tree" "$status_tree"
-state::machine::select_graph_mode "$classified_json"
-state::machine::apply_runtime_event "$graph_decision" "$runtime_json" "$event_json"
-state::machine::render_prompt_context "$decision_json"
-state::machine::render_issues_summary "$decision_json"
-```
+- is in `Worker Done` or `Done`
+- is ordered first by Linear sort order
+- has no authorized review comment beginning `Reviewed worker issue: ISSUE-ID`
 
-Keep compatibility:
+Informal pass comments do not count.
 
-```bash
-linear::selector:evaluate() {
-  state::machine::decide "$@"
-}
-```
+Review outcomes:
 
-Then move `cmd::start` from globals:
+| Outcome | Required Linear evidence | Next graph effect |
+| --- | --- | --- |
+| accepted | `Reviewed worker issue: ISSUE-ID` comment | next review target or final readiness |
+| defect | corrective issue plus review comment | `corrective_resolution` if authorized |
+| unsafe decision | `Needs human direction` comment | `needs_human_direction` |
 
-```text
-_NEXT_PROMPT_MODE
-_NEXT_AGENT_ROLE
-_NEXT_SELECTOR_PROMPT_CONTEXT
-```
+`Human direction:` releases only the latest unresolved review direction event.
+`nancy unpause <task>` removes `PAUSE`; it does not provide Linear direction. If
+Linear still records unresolved direction, the next evaluation writes `PAUSE`
+again.
 
-to one `decision` variable per iteration.
+## Runtime Policy
 
-## Rust Shape
+Runtime handles local events in this order:
 
-The Rust successor should model the same contract with plain enums and structs:
+| Event | Action |
+| --- | --- |
+| `STOP` exists | stop sidecar, remove `STOP`, stop watchers, exit |
+| `PAUSE` exists before launch | wait until removed |
+| `.worker_completed` exists after launch | normalize exit, clear sentinel, evaluate graph |
+| `worker_exit_failure` | stop with failure evidence |
+| `reviewer_exit_failure` | stop with failure evidence |
+| `single_run_requested` after one turn | exit without completion |
 
-```rust
-enum WorkflowMode {
-    Planning,
-    AgentIssueReview,
-    Execution,
-    CorrectiveResolution,
-    PostExecutionReview,
-    NeedsHumanDirection,
-    FinalCompletion,
-}
+`agent_issue_review` becomes a first class transition after successful
+`planning` when reviewer config exists. Current Bash still implements it as a
+runner follow up.
 
-enum Actor {
-    Worker,
-    Reviewer,
-    Human,
-    Runtime,
-}
+`post_execution_review` uses reviewer actor and reviewer config in the v2
+contract. Current Bash primary pass still uses worker config. That mismatch is
+a migration candidate, not contract intent.
 
-struct StateDecision {
-    version: u8,
-    task_id: String,
-    mode: WorkflowMode,
-    actor: Actor,
-    selected_issue: Option<SelectedIssue>,
-    review_target: Option<SelectedIssue>,
-    transition: Transition,
-    gate: Option<GateDecision>,
-    evidence: Evidence,
-    runtime: RuntimeActions,
-}
-```
+## Terminal Conditions
 
-Do not start with typestate for every mode. Use transition validation for
-dangerous lifecycle actions: parent closure, review issue closure, pause,
-completion, and corrective issue creation.
+`final_completion` is valid only when:
 
-## Migration Plan
+- an accepted gate exists
+- all authorized issue IDs resolve in status evidence
+- worker issues are `Worker Done` or `Done`
+- corrective issues are `Worker Done` or `Done`
+- post execution review issues are `Done`
+- every accepted worker has a `Reviewed worker issue:` marker
+- no unresolved human direction remains
+- no unauthorized Backlog issue remains
+- no unsupported hierarchy remains
 
-### Phase 1: Freeze The Contract
+`task_complete` follows only from `final_completion` actions:
 
-- Track this file at repo root.
-- Add a `state decision` JSON schema.
-- Add golden selector fixtures for known Linear shapes.
-- Keep current selector tests passing.
+1. mark the parent issue `Worker Done`
+2. write `COMPLETE`
+3. print task complete
+4. exit the loop
 
-### Phase 2: Extract Policies
+## Invalid States
 
-- Move role detection into named helpers.
-- Move gate parsing into named helpers.
-- Move review marker parsing into named helpers.
-- Move blocker and final acceptance rules into named helpers.
-- Keep the selector output byte compatible.
+Nancy must fail closed or pause for human direction for:
 
-### Phase 3: Centralize Runtime
+- selector output is not exactly one valid JSON object
+- selected mode has no selected issue outside `needs_human_direction` or
+  `final_completion`
+- direct master child is executable work outside an authorized execution parent
+- Backlog child is open after gate acceptance but missing from `execute`
+- deeper than parent, child, grandchild hierarchy
+- multiple accepted gate review issues
+- structured and legacy gate evidence disagree
+- accepted gate points to a parent that is missing from Linear evidence
+- authorized issue ID is missing from status evidence
+- post execution review issue is terminal before every accepted worker is
+  reviewed
+- unresolved human direction exists and no authorized corrective work is open
+- final completion is requested while `PAUSE` or unresolved direction remains
 
-- Move `agent_issue_review` handoff into state machine events.
-- Route actor, prompt mode, sidecar mode, and required agent config from the
-  decision record.
-- Make `needs_human_direction` produce pause actions from the decision record.
-- Make `final_completion` produce parent closure and `COMPLETE` actions from the
-  decision record.
+Invalid states never launch workers by falling back to checkbox order.
 
-### Phase 4: Structure Gate Evidence
+## Replay Scenarios
 
-- Write `Nancy-Gate` blocks from planning gate workflow.
-- Parse both structured and legacy gate text.
-- Prefer structured blocks when both exist.
+### ALP-2155
 
-### Phase 5: Port To Rust
+Given:
 
-- Reuse Bash golden fixtures as Rust tests.
-- Keep Linear as the issue source of truth.
-- Preserve `ISSUES.md` and `HANDOVER.md` as audit and coordination artifacts.
+- accepted gate authorizes Backlog `ALP-X`
+- accepted `execute` includes corrective issue `ALP-C`
+- `ALP-C` is `Backlog`, `Todo`, or `In Progress`
+- review issue records unresolved `Needs human direction`
 
-## Acceptance Criteria
+Then:
 
-- One command prints the next decision as JSON.
-- `cmd::start` consumes one decision record per iteration.
-- Prompt rendering consumes the decision record.
-- Sidecar launch consumes the decision record.
-- No prompt mode ownership logic is duplicated outside state code.
-- `agent_issue_review` is a transition event, not a hidden `start.sh` special
-  case.
-- `post_execution_review` carries exactly one `review_target`.
-- Unresolved human direction pauses without `COMPLETE`.
-- Final completion requires every accepted worker to have a review marker.
-- Sidecar `.worker_completed` never closes the task.
-- Tests cover live bugs already seen:
-  - planning and review ping pong
-  - stale `COMPLETE`
-  - closed review issue with unreviewed workers
-  - repeated `Needs human direction`
-  - single agent reviewing many issues
-  - Claude prefixed `<END_TURN>`
-  - skill handover confirmation suppressing turn exit
+- mode is `corrective_resolution`
+- selected issue is `ALP-C`
+- no `PAUSE` is written by that evaluation
 
-## Open Questions
+Invalid variant:
 
-- Should Bash v2 switch `post_execution_review` to reviewer config immediately,
-  or keep current worker config until all prompts are audited?
-- Should structured gate evidence live in issue description, a Linear comment,
-  or both?
-- Should review outcomes eventually move from comments into a structured Nancy
-  block, while comments remain human readable?
-- Should `ISSUES.md` checkboxes be removed once the decision record is the only
-  prompt input agents need?
+- if `ALP-C` is under Backlog but absent from `execute`, mode is
+  `needs_human_direction` for gate repair
+
+### ALP-2323
+
+Given:
+
+- post publish smoke review cannot decide safely
+- review issue records `Needs human direction`
+- no authorized corrective issue is open
+
+Then:
+
+- mode is `needs_human_direction`
+- selected issue is none
+- `PAUSE` is written or preserved
+- `COMPLETE` is not written
+- no review turn launches until a later `Human direction:` comment releases it
+
+### Invalid selector render
+
+Given selector output contains a valid object followed by trailing garbage,
+Nancy must canonicalize once, emit explicit `invalid_selector` evidence, and
+refuse launch. Raw jq parse noise is not the operator interface.
+
+### Operator controls
+
+`nancy pause <task>` writes `PAUSE` and asks the active worker to end cleanly.
+`nancy unpause <task>` removes `PAUSE` only. `nancy stop <task>` stops sidecar,
+kills the current worker when possible, writes `STOP`, removes `PAUSE`, and
+exits after the loop observes `STOP`.
+
+## Bash Migration Candidates
+
+These are Backlog candidates for `ALP-2365` after ALP-2364 authorizes
+execution. They are intentionally not direct children of `ALP-2359`.
+
+1. Define `DecisionRecord` schema and golden fixtures. Add a command or helper
+   that prints the next decision as one JSON object while preserving current
+   selector results.
+2. Extract selector policies from `src/linear/selector.sh` into named state
+   helpers. Preserve existing test behavior, including ALP-2155 and ALP-2323.
+3. Add structured `Nancy-Gate` parsing with legacy fallback. Fail closed on
+   multiple accepted gates and structured or legacy disagreement.
+4. Move `cmd::start` from `_NEXT_*` globals to one per iteration
+   `DecisionRecord` variable consumed by prompt render, agent config routing,
+   sidecar mode, pause, and completion.
+5. Promote `agent_issue_review` and `post_execution_review` routing to explicit
+   decision outputs. Route `post_execution_review` through reviewer config after
+   prompt and tests confirm parity.
+6. Add replay fixtures for invalid selector JSON, unauthorized Backlog,
+   operator pause, operator stop, `Human direction:` release, final completion,
+   and stale `STOP` or `COMPLETE`.
+
+## Rust Successor Constraints
+
+The Rust live path was removed because subprocess supervision and JSONL parsing
+did not preserve current foreground pane control. A Rust successor must start
+from the same `DecisionRecord` contract and preserve:
+
+- Linear first selection
+- foreground pane worker control
+- sidecar observation rather than hidden ownership
+- operator pause, stop, and unpause semantics
+- `ISSUES.md` as evidence
+- `HANDOVER.md` as coordination state
+- `COMPLETE` only after selector final completion
+
+Use plain enums and structs first. Typestate can protect dangerous actions
+later, especially parent closure, review closure, pause, completion, and
+corrective issue creation.
+
+## Acceptance For This Contract
+
+The planning gate is ready for ALP-2364 review when:
+
+- the contract names states, events, actions, side effects, terminal conditions,
+  and invalid states
+- Linear and local sentinel boundaries are explicit
+- planning, issue review, execution, corrective resolution, post execution
+  review, human direction, pause, stop, final completion, and task completion
+  are covered
+- ALP-2155 and ALP-2323 replay scenarios are explicit
+- Backlog candidates are named but not authorized before gate review
+- ALP-2364 records exactly one reviewed outcome
