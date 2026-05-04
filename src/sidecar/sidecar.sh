@@ -500,9 +500,7 @@ sidecar::_detect_break_point() {
 sidecar::_detect_exit_ready() {
 	local pane_text="$1"
 
-	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*[>•*-]?[[:space:]]*<END_TURN>[[:space:]]*$|Log saved:|Session summary:|^✻ Worked for'; then
-		return 0
-	elif printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*[>•*-]?[[:space:]]*`<END_TURN>`[[:space:]]*$'; then
+	if printf '%s\n' "$pane_text" | grep -Eq '^[[:space:]]*([^[:alnum:]_<`][[:space:]]*)?`?<END_TURN>`?[[:space:]]*$|Log saved:|Session summary:|^✻ (Worked|Cooked) for'; then
 		return 0
 	fi
 

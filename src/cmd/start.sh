@@ -464,6 +464,8 @@ _start_turn_exit_instruction() {
 When your mode action is complete, print one line with no surrounding text.
 
 That line must contain a backtick, then an opening angle bracket, then `END_TURN`, then a closing angle bracket, then a backtick.
+
+This instruction also applies after any skill runs. If a skill confirmation step says to report only a file path or final status, do that first, then print the required turn exit line.
 EOF
 		;;
 	*)
@@ -474,6 +476,8 @@ EOF
 When your mode action is complete, print one line with no surrounding text.
 
 That line must contain an opening angle bracket, then `END_TURN`, then a closing angle bracket.
+
+This instruction also applies after any skill runs. If a skill confirmation step says to report only a file path or final status, do that first, then print the required turn exit line.
 EOF
 		;;
 	esac

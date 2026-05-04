@@ -270,3 +270,40 @@ def test_start_clears_stale_stop_and_complete_sentinels():
     '''
 
     _run_review_mode_script(script)
+
+
+def test_sidecar_detects_claude_prefixed_end_turn():
+    script = r'''
+        source src/sidecar/sidecar.sh
+
+        pane_text=$(printf '\342\217\272 <END_TURN>\n')
+
+        if ! sidecar::_detect_exit_ready "$pane_text"; then
+            echo "sidecar did not detect Claude prefixed END_TURN"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
+def test_turn_exit_instruction_survives_skill_confirmation_steps():
+    script = r'''
+        source src/cmd/start.sh
+
+        codex_text=$(_start_turn_exit_instruction codex)
+        claude_text=$(_start_turn_exit_instruction claude)
+
+        for text in "$codex_text" "$claude_text"; do
+            if [[ "$text" != *"This instruction also applies after any skill runs"* ]]; then
+                echo "turn exit instruction does not override skill confirmations"
+                exit 1
+            fi
+            if [[ "$text" != *"then print the required turn exit line"* ]]; then
+                echo "turn exit instruction does not require final marker after skill output"
+                exit 1
+            fi
+        done
+    '''
+
+    _run_review_mode_script(script)

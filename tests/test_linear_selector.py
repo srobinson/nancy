@@ -148,7 +148,12 @@ def test_worker_done_blocker_releases_downstream_execution_issue():
     assert selected["selected_mode"] == "execution"
     assert selected["selected_issue"]["identifier"] == "ALP-2225"
     assert selected["blocked_candidates"] == []
-    assert selected["completion_threshold"]["blocker_release_states"] == ["Worker Done", "Done"]
+    assert selected["completion_threshold"]["blocker_release_states"] == [
+        "Worker Done",
+        "Done",
+        "Canceled",
+        "Duplicate",
+    ]
 
 
 def test_unreleased_blocker_is_reported_and_not_selected():
@@ -215,7 +220,12 @@ def test_post_execution_review_accepts_worker_done_blockers():
     assert selected["selected_mode"] == "post_execution_review"
     assert selected["selected_issue"]["identifier"] == "ALP-3002"
     assert selected["blocked_candidates"] == []
-    assert selected["completion_threshold"]["blocker_release_states"] == ["Worker Done", "Done"]
+    assert selected["completion_threshold"]["blocker_release_states"] == [
+        "Worker Done",
+        "Done",
+        "Canceled",
+        "Duplicate",
+    ]
 
 
 def test_canceled_or_duplicate_blocker_does_not_block_selection():

@@ -209,8 +209,9 @@ linear::selector:evaluate() {
 			completion_threshold: {
 				mode: $mode,
 				blocker_release_states:
-					["Worker Done", "Done"],
-				final_acceptance_states: ["Done"]
+					["Worker Done", "Done", "Canceled", "Duplicate"],
+				final_acceptance_states:
+					(if $mode == "post_execution_review" then ["Done"] else ["Worker Done", "Done"] end)
 			},
 			blocked_candidates: [ $blocked[] | {
 				identifier,
