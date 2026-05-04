@@ -1,0 +1,303 @@
+{
+  "valid": [
+    {
+      "name": "planning",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "planning",
+        "actor": "worker",
+        "prompt_mode": "planning",
+        "selected_issue": { "identifier": "ALP-2360", "title": "Define state machine planning protocol", "state": "Todo", "parent_identifier": "", "agent_role": "" },
+        "review_target": null,
+        "transition": { "from": null, "event": "open_planning_found", "to": "planning" },
+        "reason": "Planning issue is selectable before gate authorization",
+        "required_agent_config": "worker",
+        "sidecar_mode": "worker",
+        "gate": { "issue": null, "outcome": null, "authorized_parent": null, "authorized_issue_ids": [] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "agent_issue_review",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "agent_issue_review",
+        "actor": "reviewer",
+        "prompt_mode": "agent_issue_review",
+        "selected_issue": { "identifier": "ALP-2363", "title": "Draft centralized state machine integration contract", "state": "Worker Done", "parent_identifier": "", "agent_role": "" },
+        "review_target": null,
+        "transition": { "from": "planning", "event": "worker_exit_success", "to": "agent_issue_review" },
+        "reason": "Planning output requires review before gate authorization",
+        "required_agent_config": "reviewer",
+        "sidecar_mode": "review",
+        "gate": { "issue": null, "outcome": null, "authorized_parent": null, "authorized_issue_ids": [] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "execution",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "execution",
+        "actor": "worker",
+        "prompt_mode": "execution",
+        "selected_issue": { "identifier": "ALP-2366", "title": "Add DecisionRecord schema fixtures", "state": "Todo", "parent_identifier": "ALP-2365", "agent_role": "" },
+        "review_target": null,
+        "transition": { "from": "planning", "event": "authorized_worker_found", "to": "execution" },
+        "reason": "Authorized by accepted gate outcome and unblocked for execution",
+        "required_agent_config": "worker",
+        "sidecar_mode": "worker",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2367", "ALP-2368"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "corrective_resolution",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "corrective_resolution",
+        "actor": "worker",
+        "prompt_mode": "corrective_resolution",
+        "selected_issue": { "identifier": "ALP-2374", "title": "Corrective: fix review defect", "state": "Backlog", "parent_identifier": "ALP-2365", "agent_role": "" },
+        "review_target": null,
+        "transition": { "from": "post_execution_review", "event": "authorized_corrective_found", "to": "corrective_resolution" },
+        "reason": "Corrective issue outranks review until accepted or recorded independent",
+        "required_agent_config": "worker",
+        "sidecar_mode": "worker",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373", "ALP-2374"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [{ "identifier": "ALP-2374", "title": "Corrective: fix review defect", "state": "Backlog" }], "open_review": [{ "identifier": "ALP-2373", "title": "Post execution review", "state": "Worker Done" }], "reviewed_worker_ids": [], "human_direction": { "identifier": "ALP-2373", "title": "Post execution review", "state": "Worker Done", "blocker": "Outcome: Needs human direction" }, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "post_execution_review",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "post_execution_review",
+        "actor": "reviewer",
+        "prompt_mode": "post_execution_review",
+        "selected_issue": { "identifier": "ALP-2373", "title": "Post execution review", "state": "Todo", "parent_identifier": "ALP-2365", "agent_role": "" },
+        "review_target": { "identifier": "ALP-2366", "title": "Add DecisionRecord schema fixtures", "state": "Worker Done" },
+        "transition": { "from": "execution", "event": "execution_queue_empty", "to": "post_execution_review" },
+        "reason": "Post execution review is eligible after execution and corrective queues are clear",
+        "required_agent_config": "reviewer",
+        "sidecar_mode": "review",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [{ "identifier": "ALP-2373", "title": "Post execution review", "state": "Todo" }], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "needs_human_direction",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "needs_human_direction",
+        "actor": "human",
+        "prompt_mode": "needs_human_direction",
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "post_execution_review", "event": "unresolved_human_direction_found", "to": "needs_human_direction" },
+        "reason": "Post execution review recorded Needs human direction",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [{ "identifier": "ALP-2373", "title": "Post execution review", "state": "Worker Done" }], "reviewed_worker_ids": [], "human_direction": { "identifier": "ALP-2373", "title": "Post execution review", "state": "Worker Done", "blocker": "Outcome: Needs human direction" }, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": true, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "final_completion",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "final_completion",
+        "actor": "runtime",
+        "prompt_mode": null,
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "post_execution_review", "event": "all_authorized_work_terminal", "to": "final_completion" },
+        "reason": "All authorized gate work is terminal",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": ["ALP-2366"], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": false, "write_complete": true, "fail_closed": false },
+        "terminal": { "final_completion": true, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "task_complete",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "task_complete",
+        "actor": "none",
+        "prompt_mode": null,
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "final_completion", "event": "worker_exit_success", "to": "task_complete" },
+        "reason": "Local COMPLETE sentinel exists after final completion action",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": ["ALP-2366"], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": true, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "stopped",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "stopped",
+        "actor": "none",
+        "prompt_mode": null,
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "execution", "event": "operator_stop", "to": "stopped" },
+        "reason": "Operator requested loop exit",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": true }
+      }
+    },
+    {
+      "name": "paused",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "paused",
+        "actor": "none",
+        "prompt_mode": null,
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "execution", "event": "operator_pause", "to": "paused" },
+        "reason": "Operator pause prevents launching another worker turn",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366"] },
+        "thresholds": { "blocker_release_states": ["Worker Done", "Done", "Canceled", "Duplicate"], "worker_terminal_states": ["Worker Done", "Done"], "corrective_terminal_states": ["Worker Done", "Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": true, "stopped": false }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "execution_without_selected_issue",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "execution",
+        "actor": "worker",
+        "prompt_mode": "execution",
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "planning", "event": "authorized_worker_found", "to": "execution" },
+        "reason": "Invalid execution decision without a selected issue",
+        "required_agent_config": "worker",
+        "sidecar_mode": "worker",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366"] },
+        "thresholds": { "blocker_release_states": ["Worker Done"], "worker_terminal_states": ["Worker Done"], "corrective_terminal_states": ["Worker Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "paused_and_complete",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "paused",
+        "actor": "none",
+        "prompt_mode": null,
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "execution", "event": "operator_pause", "to": "paused" },
+        "reason": "Invalid paused decision that also completes",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366"] },
+        "thresholds": { "blocker_release_states": ["Worker Done"], "worker_terminal_states": ["Worker Done"], "corrective_terminal_states": ["Worker Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": true, "write_complete": true, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": true, "paused": true, "stopped": false }
+      }
+    },
+    {
+      "name": "post_review_without_target",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "post_execution_review",
+        "actor": "reviewer",
+        "prompt_mode": "post_execution_review",
+        "selected_issue": { "identifier": "ALP-2373", "title": "Post execution review", "state": "Todo", "parent_identifier": "ALP-2365", "agent_role": "" },
+        "review_target": null,
+        "transition": { "from": "execution", "event": "execution_queue_empty", "to": "post_execution_review" },
+        "reason": "Invalid post execution review without review target",
+        "required_agent_config": "reviewer",
+        "sidecar_mode": "review",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366", "ALP-2373"] },
+        "thresholds": { "blocker_release_states": ["Worker Done"], "worker_terminal_states": ["Worker Done"], "corrective_terminal_states": ["Worker Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": true, "write_pause": false, "write_complete": false, "fail_closed": false },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    },
+    {
+      "name": "unknown_mode",
+      "record": {
+        "version": 2,
+        "task_id": "ALP-2359",
+        "mode": "review_churn",
+        "actor": "reviewer",
+        "prompt_mode": "post_execution_review",
+        "selected_issue": null,
+        "review_target": null,
+        "transition": { "from": "post_execution_review", "event": "reviewer_exit_success", "to": "needs_human_direction" },
+        "reason": "Invalid unknown workflow mode",
+        "required_agent_config": "none",
+        "sidecar_mode": "none",
+        "gate": { "issue": "ALP-2364", "outcome": "ready_for_execution", "authorized_parent": "ALP-2365", "authorized_issue_ids": ["ALP-2366"] },
+        "thresholds": { "blocker_release_states": ["Worker Done"], "worker_terminal_states": ["Worker Done"], "corrective_terminal_states": ["Worker Done"], "review_terminal_states": ["Done"] },
+        "evidence": { "blocked_candidates": [], "unauthorized_backlog_candidates": [], "open_corrective": [], "open_review": [], "reviewed_worker_ids": [], "human_direction": null, "invalid_states": [] },
+        "runtime": { "launch_agent": false, "write_pause": false, "write_complete": false, "fail_closed": true },
+        "terminal": { "final_completion": false, "task_complete": false, "paused": false, "stopped": false }
+      }
+    }
+  ],
+  "invalid_selector_output": [
+    "{\"version\":2,\"mode\":\"execution\"}\ntrailing garbage"
+  ]
+}

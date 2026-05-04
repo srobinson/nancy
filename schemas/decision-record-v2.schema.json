@@ -1,0 +1,289 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helioy.local/nancy/decision-record-v2.schema.json",
+  "title": "Nancy DecisionRecord v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "task_id",
+    "mode",
+    "actor",
+    "prompt_mode",
+    "selected_issue",
+    "review_target",
+    "transition",
+    "reason",
+    "required_agent_config",
+    "sidecar_mode",
+    "gate",
+    "thresholds",
+    "evidence",
+    "runtime",
+    "terminal"
+  ],
+  "properties": {
+    "version": { "const": 2 },
+    "task_id": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "planning",
+        "agent_issue_review",
+        "execution",
+        "corrective_resolution",
+        "post_execution_review",
+        "needs_human_direction",
+        "final_completion",
+        "task_complete",
+        "stopped",
+        "paused"
+      ]
+    },
+    "actor": {
+      "type": "string",
+      "enum": ["worker", "reviewer", "human", "runtime", "none"]
+    },
+    "prompt_mode": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "planning",
+            "agent_issue_review",
+            "execution",
+            "corrective_resolution",
+            "post_execution_review",
+            "needs_human_direction"
+          ]
+        },
+        { "type": "null" }
+      ]
+    },
+    "selected_issue": {
+      "oneOf": [
+        { "$ref": "#/$defs/selected_issue" },
+        { "type": "null" }
+      ]
+    },
+    "review_target": {
+      "oneOf": [
+        { "$ref": "#/$defs/review_target" },
+        { "type": "null" }
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "event", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "event": { "type": "string" },
+        "to": { "$ref": "#/properties/mode" }
+      }
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "required_agent_config": {
+      "type": "string",
+      "enum": ["worker", "reviewer", "none"]
+    },
+    "sidecar_mode": {
+      "type": "string",
+      "enum": ["worker", "review", "none"]
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue",
+        "outcome",
+        "authorized_parent",
+        "authorized_issue_ids"
+      ],
+      "properties": {
+        "issue": { "type": ["string", "null"], "pattern": "^[A-Z]+-[0-9]+$" },
+        "outcome": {
+          "type": ["string", "null"],
+          "enum": [
+            "ready_for_execution",
+            "pre_execution_blockers_required",
+            "needs_human_direction",
+            null
+          ]
+        },
+        "authorized_parent": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Z]+-[0-9]+$"
+        },
+        "authorized_issue_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blocker_release_states",
+        "worker_terminal_states",
+        "corrective_terminal_states",
+        "review_terminal_states"
+      ],
+      "properties": {
+        "blocker_release_states": { "$ref": "#/$defs/state_list" },
+        "worker_terminal_states": { "$ref": "#/$defs/state_list" },
+        "corrective_terminal_states": { "$ref": "#/$defs/state_list" },
+        "review_terminal_states": { "$ref": "#/$defs/state_list" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blocked_candidates",
+        "unauthorized_backlog_candidates",
+        "open_corrective",
+        "open_review",
+        "reviewed_worker_ids",
+        "human_direction",
+        "invalid_states"
+      ],
+      "properties": {
+        "blocked_candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/candidate" }
+        },
+        "unauthorized_backlog_candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/candidate" }
+        },
+        "open_corrective": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/candidate" }
+        },
+        "open_review": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/candidate" }
+        },
+        "reviewed_worker_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+          "uniqueItems": true
+        },
+        "human_direction": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["identifier", "title", "state", "blocker"],
+              "properties": {
+                "identifier": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+                "title": { "type": "string" },
+                "state": { "type": "string" },
+                "blocker": { "type": "string" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "invalid_states": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["launch_agent", "write_pause", "write_complete", "fail_closed"],
+      "properties": {
+        "launch_agent": { "type": "boolean" },
+        "write_pause": { "type": "boolean" },
+        "write_complete": { "type": "boolean" },
+        "fail_closed": { "type": "boolean" }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["final_completion", "task_complete", "paused", "stopped"],
+      "properties": {
+        "final_completion": { "type": "boolean" },
+        "task_complete": { "type": "boolean" },
+        "paused": { "type": "boolean" },
+        "stopped": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "selected_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifier",
+        "title",
+        "state",
+        "parent_identifier",
+        "agent_role"
+      ],
+      "properties": {
+        "identifier": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+        "title": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 },
+        "parent_identifier": { "type": "string" },
+        "agent_role": { "type": "string" }
+      }
+    },
+    "review_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "title", "state"],
+      "properties": {
+        "identifier": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+        "title": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "title", "state"],
+      "properties": {
+        "identifier": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" },
+        "title": { "type": "string" },
+        "state": { "type": "string" },
+        "parent_identifier": { "type": "string" },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]+$" }
+        },
+        "gate_review_issue": {
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]+$"
+        }
+      }
+    },
+    "state_list": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "x-selected-issue-required-modes": [
+    "planning",
+    "agent_issue_review",
+    "execution",
+    "corrective_resolution",
+    "post_execution_review"
+  ],
+  "x-review-target-required-modes": ["post_execution_review"],
+  "x-agent-launch-modes": [
+    "planning",
+    "agent_issue_review",
+    "execution",
+    "corrective_resolution",
+    "post_execution_review"
+  ]
+}
