@@ -312,8 +312,11 @@ _start_has_reviewer_agent() {
 }
 
 _start_mode_uses_reviewer_agent() {
+	# Modes whose single agent turn must run on the configured reviewer CLI.
+	# The selector chooses the mode; this function only routes the prompt to
+	# the reviewer agent. New review modes belong here, not in Layer A.
 	case "${1:-}" in
-	agent_issue_review)
+	agent_issue_review | post_execution_review)
 		return 0
 		;;
 	*)
@@ -323,6 +326,13 @@ _start_mode_uses_reviewer_agent() {
 }
 
 _start_should_run_reviewer_after_worker() {
+	# Layer A: in-iteration handoff from worker turn to reviewer turn.
+	# Only `planning` chains this way because the agent_issue_review prompt
+	# reads HANDOVER.md and the gate review issue directly and does not need
+	# a fresh selector evaluation. Other review modes (post_execution_review,
+	# corrective_resolution) require selector-computed context (Review target,
+	# corrective targets) and so are driven by the next loop iteration's
+	# selector and routed via _start_mode_uses_reviewer_agent.
 	local mode="${1:-}"
 	local task="$2"
 
@@ -339,9 +349,12 @@ _start_should_run_reviewer_after_worker() {
 }
 
 _start_reviewer_followup_mode() {
+	# Only reached from _start_should_run_reviewer_after_worker, which today
+	# returns 0 only for `planning`. Keep the function pure (no dead branches)
+	# so future review modes that need a Layer A chain are added explicitly.
 	case "${1:-}" in
-	post_execution_review)
-		echo "post_execution_review"
+	planning)
+		echo "agent_issue_review"
 		;;
 	*)
 		echo "agent_issue_review"

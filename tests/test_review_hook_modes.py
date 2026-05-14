@@ -52,12 +52,12 @@ def test_legacy_review_hook_requires_explicit_legacy_local_hygiene_mode():
     _run_review_mode_script(script)
 
 
-def test_post_execution_review_primary_pass_uses_worker_agent():
+def test_post_execution_review_primary_pass_uses_reviewer_agent():
     script = r'''
         source src/cmd/start.sh
 
-        if _start_mode_uses_reviewer_agent post_execution_review; then
-            echo "post execution review primary pass should use worker agent"
+        if ! _start_mode_uses_reviewer_agent post_execution_review; then
+            echo "post execution review primary pass should route to reviewer agent"
             exit 1
         fi
 

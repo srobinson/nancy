@@ -431,6 +431,67 @@ def test_human_direction_comment_releases_review_back_to_post_execution_review()
     assert selected["human_direction"] is None
 
 
+def test_post_execution_review_interleaves_with_open_execution_pool():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`, `ALP-3003`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Todo", sort=2),
+                _issue("ALP-3002", "Third worker", state="Todo", sort=3),
+                _issue("ALP-3003", "Post execution review", sort=4),
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3003"
+    assert selected["review_target"] == {
+        "identifier": "ALP-3000",
+        "title": "First worker",
+        "state": "Worker Done",
+    }
+
+
+def test_execution_resumes_after_interleaved_review_marker_recorded():
+    review = _issue(
+        "ALP-3003",
+        "Post execution review",
+        state="Todo",
+        sort=4,
+        comments=[
+            {
+                "body": "Reviewed worker issue: ALP-3000\nOutcome: Review passed",
+                "createdAt": "2026-01-01T00:00:01Z",
+                "updatedAt": "2026-01-01T00:00:01Z",
+            }
+        ],
+    )
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`, `ALP-3003`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Todo", sort=2),
+                _issue("ALP-3002", "Third worker", state="Todo", sort=3),
+                review,
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "execution"
+    assert selected["selected_issue"]["identifier"] == "ALP-3001"
+    assert selected["review_target"] is None
+
+
 def test_post_execution_review_names_one_worker_review_target():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),

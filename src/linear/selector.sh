@@ -143,25 +143,28 @@ linear::selector:evaluate() {
 		] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $review_target |
 		($review_target != null and ([ $authorized_status[] | select(.review and is_final_accepted) ] | length) > 0) as $review_closed_with_unreviewed_target |
 		([ $authorized_status[] | select(is_final_accepted | not) ]) as $not_final_authorized |
+		([ $authorized_status[] | select(.review and has_unresolved_human_direction) ]) as $human_direction_reviews |
 		(
 			($authorized_ids | length) > 0
 			and $accepted_gate != null
 			and ($missing_authorized_status | length) == 0
 			and ($not_final_authorized | length) == 0
 			and ($review_target == null)
+			and ($human_direction_reviews | length) == 0
 		) as $final_ready |
 		([ $authorized[] | select(is_selectable and .corrective) ]) as $corrective_open |
 		([ $authorized[] | select(.review and (is_selectable or state_name == "Worker Done")) ]) as $review_open |
 		([ $authorized[] | select(is_selectable and (.corrective | not) and (.review | not)) ]) as $execution_open |
-		([ $authorized_status[] | select(.review and has_unresolved_human_direction) ]) as $human_direction_reviews |
 		(if ($too_deep | length) > 0 then "needs_human_direction"
 		elif ($open_planning | length) > 0 then "planning"
 		elif $open_gate_review != null then "planning"
 		elif ($unauthorized_gate_defects | length) > 0 then "needs_human_direction"
 		elif ($corrective_open | length) > 0 then "corrective_resolution"
-		elif (($execution_open | length) == 0 and ($human_direction_reviews | length) > 0) then "needs_human_direction"
-		elif (($execution_open | length) == 0 and $review_closed_with_unreviewed_target) then "needs_human_direction"
-		elif (($execution_open | length) == 0 and ($review_open | length) > 0) then "post_execution_review"
+		elif ($human_direction_reviews | length) > 0 then "needs_human_direction"
+		elif $review_closed_with_unreviewed_target then "needs_human_direction"
+		elif (($review_open | length) > 0
+			and ($review_target != null or ($execution_open | length) == 0))
+		then "post_execution_review"
 		elif $final_ready then "final_completion"
 		elif ($authorized_ids | length) > 0 then "execution"
 		else "planning"
@@ -207,7 +210,11 @@ linear::selector:evaluate() {
 				elif $mode == "corrective_resolution" then
 					"Corrective issue outranks review until accepted or recorded independent"
 				elif $mode == "post_execution_review" then
-					"Post execution review is eligible after execution and corrective queues are clear"
+					(if $review_target != null then
+						"Worker issue completed and awaiting review; corrective queue is clear"
+					else
+						"Execution and corrective queues are clear; reconcile open review issue state"
+					end)
 				elif $mode == "execution" then
 					"Authorized by accepted gate outcome and unblocked for execution"
 				else
