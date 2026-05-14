@@ -187,8 +187,10 @@ linear::selector:evaluate() {
 			$execution_open
 		end) as $pool |
 		([ $pool[] | . + {blockers: blockers($mode)} ]) as $classified |
-		([ $classified[] | select(any(.blockers[]?; .released | not)) ]) as $blocked |
-		([ $classified[] | select((any(.blockers[]?; .released | not) | not)) ] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $selected |
+		([ $classified[] | select((.review | not) and any(.blockers[]?; .released | not)) ]) as $blocked |
+		([ $classified[] |
+			select(.review or (any(.blockers[]?; .released | not) | not))
+		] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $selected |
 		{
 			selected_mode: $mode,
 			selected_issue: ($selected | selected_shape),

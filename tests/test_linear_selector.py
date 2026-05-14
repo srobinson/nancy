@@ -431,6 +431,40 @@ def test_human_direction_comment_releases_review_back_to_post_execution_review()
     assert selected["human_direction"] is None
 
 
+def test_post_execution_review_ignores_review_issue_worker_blockers():
+    review = _issue(
+        "ALP-3003",
+        "Post execution review",
+        state="Todo",
+        sort=4,
+        blockers=[
+            {"identifier": "ALP-3000", "state": "Worker Done"},
+            {"identifier": "ALP-3001", "state": "Todo"},
+            {"identifier": "ALP-3002", "state": "Todo"},
+        ],
+    )
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`, `ALP-3003`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Todo", sort=2),
+                _issue("ALP-3002", "Third worker", state="Todo", sort=3),
+                review,
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["selected_issue"]["identifier"] == "ALP-3003"
+    assert selected["review_target"]["identifier"] == "ALP-3000"
+    assert selected["blocked_candidates"] == []
+
+
 def test_post_execution_review_interleaves_with_open_execution_pool():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`, `ALP-3003`"),
