@@ -25,6 +25,11 @@ REQUIRED_MODES = [
     "post_execution_review",
     "needs_human_direction",
 ]
+REPAIR_RESOLUTION_SHAPE = (
+    '{"repair_attempts_resolved":{"target_issue":"ISSUE-ID",'
+    '"repair_instruction":"TEXT","iteration_timestamp":"YYYY-MM-DDTHH:MM:SSZ",'
+    '"resolution":"TEXT"}}'
+)
 
 
 def _mode_instructions(mode):
@@ -131,6 +136,7 @@ def test_post_execution_review_repair_instruction_renders_gate_authority_branch(
     assert "- Repair instruction: Extend accepted gate `ALP-2411`" in prompt
     assert "repair only gate authority" in prompt
     assert "extend its `Execute:` line" in prompt
+    assert REPAIR_RESOLUTION_SHAPE in prompt
     assert "one-line Linear comment on the gate" in prompt
     assert "post-execution-review-workflow.md#outcome-classification" in prompt
     assert (

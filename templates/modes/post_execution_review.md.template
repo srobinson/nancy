@@ -9,7 +9,7 @@ Review exactly one completed worker issue per turn, reconcile review completion,
 ## Review Loop
 
 1. Fetch the selected post execution review issue, the selected Review target, and any Repair instruction from the Selected Work section.
-2. If a Repair instruction is present, repair only gate authority. Read the named accepted gate, extend its `Execute:` line to include the missing identifier or identifiers, record a one-line Linear comment on the gate confirming the repair, and end the turn.
+2. If a Repair instruction is present, repair only gate authority. Read the named accepted gate, extend its `Execute:` line to include the missing identifier or identifiers, record `{"repair_attempts_resolved":{"target_issue":"ISSUE-ID","repair_instruction":"TEXT","iteration_timestamp":"YYYY-MM-DDTHH:MM:SSZ","resolution":"TEXT"}}` as a one-line Linear comment on the gate confirming the repair, and end the turn.
 3. If the repair cannot be completed safely, record `Outcome: Needs human direction` with `Classification:` per `post-execution-review-workflow.md#outcome-classification`, then end the turn.
 4. If a Review target is present, review only that target against its Linear issue, accepted planning context, comments, code changes, and verification evidence.
 5. If no Review target is present, do not review source or the execution set. Reconcile the selected review issue state from existing `Reviewed worker issue:` markers. If every authorized worker issue has a recorded marker, no corrective issue is open, and no review outcome is `Needs human direction`, mark the review issue `Done` and end the turn. Otherwise record the gap as a comment and end the turn.
