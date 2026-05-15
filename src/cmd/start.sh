@@ -11,6 +11,10 @@ _NEXT_PROMPT_MODE="execution"
 _NEXT_SELECTION=""
 _NEXT_SELECTION_HAS_ISSUE="false"
 
+_START_CMD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$_START_CMD_DIR/start_dispatch.sh"
+unset _START_CMD_DIR
+
 _start_cleanup() {
 	echo ""
 	log::warn "Interrupted. Stopping Nancy..."
@@ -97,6 +101,7 @@ _start_create_issues_file() {
 EOF
 	linear::selector:render_summary "$selection" >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 	local row_jq
+	# shellcheck disable=SC2016
 	row_jq='
 		.data.issues.nodes | sort_by(.subIssueSortOrder) | .[] |
 		(. as $p |
@@ -131,66 +136,6 @@ EOF
 	_NEXT_SELECTION_HAS_ISSUE=$(jq -r 'if .selected_issue == null then "false" else "true" end' <<<"$selection")
 	_NEXT_SELECTOR_PROMPT_CONTEXT=$(linear::selector:render_prompt_context "$selection")
 	_NEXT_SELECTION="$selection"
-}
-
-_start_validate_selector_output() {
-	local selection="$1"
-
-	if jq -e -s '
-		length == 1
-		and (.[0] | type == "object")
-		and (.[0].selected_mode | type == "string")
-		and (.[0] | has("selected_issue"))
-	' >/dev/null 2>&1 <<<"$selection"; then
-		return 0
-	fi
-
-	log::error "Linear selector returned invalid JSON. Refusing to launch an agent."
-	return 1
-}
-
-_start_selection_has_no_issue() {
-	local selection="$1"
-	local has_no_issue
-
-	if ! has_no_issue=$(jq -er 'if .selected_issue == null then "true" else "false" end' 2>/dev/null <<<"$selection"); then
-		log::error "Linear selector JSON became invalid before null selection check. Refusing to launch an agent."
-		return 2
-	fi
-
-	[[ "$has_no_issue" == "true" ]]
-}
-
-_start_handle_null_selection() {
-	local task="$1"
-	local project_id="$2"
-	local prompt_mode="$3"
-	local selection="$4"
-
-	case "$prompt_mode" in
-	final_completion)
-		log::info "No eligible Linear issue remains. Closing task from selector final completion."
-		linear::issue:update:status "$project_id" "Worker Done"
-		task::mark_complete "$task"
-		echo ""
-		ui::banner "🎉 Task Complete!" "$task"
-		return 0
-		;;
-	needs_human_direction)
-		linear::selector:render_blocker "$selection"
-		mkdir -p "${NANCY_TASK_DIR}/${task}"
-		cat >"${NANCY_TASK_DIR}/${task}/PAUSE" <<EOF
-Paused at $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-Reason: Needs human direction
-EOF
-		return 2
-		;;
-	*)
-		log::error "No eligible Linear issue selected. Refusing to launch an agent without selected work."
-		linear::selector:render_summary "$selection" >&2
-		return 1
-		;;
-	esac
 }
 
 _start_wait_while_paused() {
@@ -254,8 +199,8 @@ _start_setup_worktree() {
 		log::info "Worktree already exists: $worktree_dir"
 	fi
 
-	_worktree_info[dir]="$worktree_dir"
-	_worktree_info[main_repo]="$main_repo_dir"
+	_worktree_info["dir"]="$worktree_dir"
+	_worktree_info["main_repo"]="$main_repo_dir"
 
 	cd "$worktree_dir" || {
 		log::error "Failed to cd into worktree"
@@ -274,26 +219,6 @@ _start_setup_worktree() {
 	log::info "Working in worktree: $(pwd)"
 }
 
-_start_is_gate_aware_prompt_mode() {
-	case "${1:-}" in
-	planning | agent_issue_review | execution | corrective_resolution | post_execution_review | needs_human_direction)
-		return 0
-		;;
-	*)
-		return 1
-		;;
-	esac
-}
-
-_start_should_run_review_agent_for_mode() {
-	local mode="${1:-}"
-
-	[[ "${NANCY_CODE_REVIEW_AGENT_ENABLED:-false}" == "true" ]] || return 1
-	[[ "${NANCY_LEGACY_LOCAL_REVIEW_ENABLED:-false}" == "true" ]] || return 1
-	[[ "$mode" == "legacy_local_hygiene" ]] || return 1
-	! _start_is_gate_aware_prompt_mode "$mode"
-}
-
 _start_has_reviewer_agent() {
 	local task="$1"
 	local task_config=""
@@ -309,57 +234,6 @@ _start_has_reviewer_agent() {
 	fi
 
 	[[ -n "$reviewer_cli" ]]
-}
-
-_start_mode_uses_reviewer_agent() {
-	# Modes whose single agent turn must run on the configured reviewer CLI.
-	# The selector chooses the mode; this function only routes the prompt to
-	# the reviewer agent. New review modes belong here, not in Layer A.
-	case "${1:-}" in
-	agent_issue_review | post_execution_review)
-		return 0
-		;;
-	*)
-		return 1
-		;;
-	esac
-}
-
-_start_should_run_reviewer_after_worker() {
-	# Layer A: in-iteration handoff from worker turn to reviewer turn.
-	# Only `planning` chains this way because the agent_issue_review prompt
-	# reads HANDOVER.md and the gate review issue directly and does not need
-	# a fresh selector evaluation. Other review modes (post_execution_review,
-	# corrective_resolution) require selector-computed context (Review target,
-	# corrective targets) and so are driven by the next loop iteration's
-	# selector and routed via _start_mode_uses_reviewer_agent.
-	local mode="${1:-}"
-	local task="$2"
-
-	_start_has_reviewer_agent "$task" || return 1
-
-	case "$mode" in
-	planning)
-		return 0
-		;;
-	*)
-		return 1
-		;;
-	esac
-}
-
-_start_reviewer_followup_mode() {
-	# Only reached from _start_should_run_reviewer_after_worker, which today
-	# returns 0 only for `planning`. Keep the function pure (no dead branches)
-	# so future review modes that need a Layer A chain are added explicitly.
-	case "${1:-}" in
-	planning)
-		echo "agent_issue_review"
-		;;
-	*)
-		echo "agent_issue_review"
-		;;
-	esac
 }
 
 # Helper: Run code review agent
@@ -688,188 +562,82 @@ _start_reviewer_agent() {
 	_start_run_worker_agent "$task" "$reviewer_session_id" "$reviewer_session_file" "$prompt" "" "$worktree_dir" "reviewer" "review"
 }
 
-cmd::start() {
-	local task="${1:-}"
+_start_prepare_loop() {
+	local task="$1"
+	local -n _project=$2
+	local -n _worktree=$3
+	local -n _runtime=$4
 
-	# Validate nancy is initialized
 	if [[ ! -d "$NANCY_DIR" ]]; then
 		log::error "Nancy not initialized. Run 'nancy setup' first."
 		return 1
 	fi
 
-	# Store task globally for cleanup
 	_NANCY_CURRENT_TASK="$task"
 	export NANCY_CURRENT_TASK_DIR="${NANCY_TASK_DIR}/${task}"
-	local stop_file="${NANCY_CURRENT_TASK_DIR}/STOP"
-
-	# A previous run may have left behind local sentinels. Clear them before
-	# starting a fresh loop; selector final_completion recreates COMPLETE when
-	# the current Linear state is truly terminal.
 	_start_clear_stale_sentinels "$task"
 
-	# Fetch Linear context
-	declare -A project
-	_start_fetch_linear_context "$task" project || return 1
-
-	# Setup worktree
-	declare -A worktree
-	_start_setup_worktree "$task" worktree || return 1
-
-	# Setup signal handler
+	_start_fetch_linear_context "$task" _project || return 1
+	_start_setup_worktree "$task" _worktree || return 1
 	trap _start_cleanup SIGINT SIGTERM
 
-	local worker_cli
-	local worker_model
-	local reviewer_cli
-	local reviewer_model
-	worker_cli=$(config::get_agent "$task" "worker" "cli" "$(cli::current)")
-	worker_model=$(config::get_agent "$task" "worker" "model" "${NANCY_MODEL:-}")
-	reviewer_cli=$(config::get_agent "$task" "reviewer" "cli" "$worker_cli")
-	reviewer_model=$(config::get_agent "$task" "reviewer" "model" "$worker_model")
+	_runtime["worker_cli"]=$(config::get_agent "$task" "worker" "cli" "$(cli::current)")
+	_runtime["worker_model"]=$(config::get_agent "$task" "worker" "model" "${NANCY_MODEL:-}")
+	_runtime["reviewer_cli"]=$(config::get_agent "$task" "reviewer" "cli" "${_runtime["worker_cli"]}")
+	_runtime["reviewer_model"]=$(config::get_agent "$task" "reviewer" "model" "${_runtime["worker_model"]}")
 
-	if ! deps::exists "$worker_cli"; then
-		log::error "Worker CLI not found: $worker_cli"
+	if ! deps::exists "${_runtime["worker_cli"]}"; then
+		log::error "Worker CLI not found: ${_runtime["worker_cli"]}"
 		return 1
 	fi
 
-	_start_print_start_info "$task" "$worker_cli" "$worker_model" "$reviewer_cli" "$reviewer_model"
+	_start_print_start_info "$task" "${_runtime["worker_cli"]}" "${_runtime["worker_model"]}" \
+		"${_runtime["reviewer_cli"]}" "${_runtime["reviewer_model"]}"
+}
 
-	# Main iteration loop
-	local iteration=$(task::count_sessions "$task")
+cmd::start() {
+	local task="${1:-}"
+	# shellcheck disable=SC2034
+	declare -A project
+	# shellcheck disable=SC2034
+	declare -A worktree
+	# shellcheck disable=SC2034
+	declare -A runtime
+	local iteration
+
+	_start_prepare_loop "$task" project worktree runtime || return 1
+	iteration=$(task::count_sessions "$task")
 
 	while :; do
-
-		# Create ISSUES.md and detect agent role from first uncompleted issue
-		_start_create_issues_file "$task" "${project[id]}" "${project[identifier]}" "${project[title]}" || return $?
-		local agent_role="${_NEXT_AGENT_ROLE:-}"
-		local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
-		local selection="${_NEXT_SELECTION:-{}}"
-		local selection_has_issue="${_NEXT_SELECTION_HAS_ISSUE:-false}"
-		local active_agent_config_role="worker"
-		local active_cli="$worker_cli"
-		local active_sidecar_mode="worker"
-
-		if [[ "$prompt_mode" == "final_completion" ]]; then
-			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection"
-			return $?
-		fi
-
-		if [[ "$selection_has_issue" != "true" ]]; then
-			local null_selection_status=0
-			_start_handle_null_selection "$task" "${project[id]}" "$prompt_mode" "$selection" || null_selection_status=$?
-			case "$null_selection_status" in
+		declare -A turn=()
+		_start_run_iteration "$task" project worktree runtime iteration turn || return $?
+		case "${turn["action"]:-}" in
+		return)
+			return "${turn["status"]}"
+			;;
+		pause)
+			_start_wait_while_paused "$task"
+			continue
+			;;
+		epilogue)
+			_start_iteration_epilogue "$task" project worktree runtime turn "$iteration"
+			local epilogue_status=$?
+			case $epilogue_status in
 			0)
 				return 0
 				;;
 			2)
-				_start_wait_while_paused "$task"
 				continue
 				;;
 			*)
-				return "$null_selection_status"
+				return "$epilogue_status"
 				;;
 			esac
-		fi
-
-		if [[ -n "$agent_role" ]]; then
-			log::info "Agent role: ${agent_role}"
-		fi
-		if _start_mode_uses_reviewer_agent "$prompt_mode"; then
-			if ! _start_has_reviewer_agent "$task"; then
-				log::error "Mode $prompt_mode requires agents.reviewer.cli in .nancy/config.json"
-				return 1
-			fi
-			active_agent_config_role="reviewer"
-			active_cli="$reviewer_cli"
-			active_sidecar_mode="review"
-		fi
-		if ! deps::exists "$active_cli"; then
-			log::error "Active CLI not found for $active_agent_config_role: $active_cli"
+			;;
+		*)
+			log::error "Start loop entered an invalid lifecycle state: ${turn["action"]:-unset}"
 			return 1
-		fi
-
-		# Archive stale directives from previous iterations so the
-		# incoming worker session starts with an empty inbox.
-		comms::archive_all "$task" "worker"
-		comms::archive_all "$task" "orchestrator"
-		sidecar::clear_completion "$task" 2>/dev/null || true
-		iteration=$((iteration + 1))
-		local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
-		local session_id=$(session::id "$task" "$iteration")
-		local session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}.md"
-
-		session::init "$task" "$iteration"
-		export NANCY_SESSION_ID="$session_id"
-
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-		log::info "Iteration #$iteration - $(date)"
-		log::info "Session: $session_id"
-		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-		echo ""
-
-		local prompt
-		prompt=$(_start_render_worker_prompt "$task" "$session_id" "${project[identifier]}" "${project[title]}" \
-			"${project[description]}" "${worktree[dir]}" "$agent_role" "$active_cli") || return 1
-
-		# Save rendered prompt
-		echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
-
-		local exit_code=0
-		_start_run_worker_agent "$task" "$session_id" "$session_file" "$prompt" "$agent_role" "${worktree[dir]}" \
-			"$active_agent_config_role" "$active_sidecar_mode" || exit_code=$?
-
-		# Check for stop sentinel (written by `nancy stop`)
-		if [[ -f "$stop_file" ]]; then
-			log::info "Stop requested. Exiting worker loop."
-			rm -f "$stop_file"
-			notify::stop_all_watchers "$task" 2>/dev/null || true
-			return 0
-		fi
-
-		if [[ $exit_code -eq 0 ]]; then
-			ui::success "Iteration #$iteration completed"
-
-			# Run code review agent if enabled
-			# Archive worker directives before review so the review agent
-			# does not inherit stale guidance meant for the build agent.
-			comms::archive_all "$task" "worker"
-			if _start_should_run_reviewer_after_worker "$prompt_mode" "$task"; then
-				local reviewer_prompt_mode
-				reviewer_prompt_mode=$(_start_reviewer_followup_mode "$prompt_mode")
-				_start_reviewer_agent "$task" "$session_id" "$iteration" "${project[identifier]}" "${project[title]}" \
-					"${project[description]}" "${worktree[dir]}" "$reviewer_cli" "$reviewer_prompt_mode" || return $?
-			elif [[ "$prompt_mode" == "planning" ]]; then
-				log::error "Planning mode requires agents.reviewer.cli in .nancy/config.json"
-				return 1
-			else
-				_start_maybe_run_review_agent "$prompt_mode" "$task" "$session_id" "$iteration" \
-					"${project[identifier]}" "${project[title]}" "${worktree[dir]}" "$reviewer_cli"
-			fi
-
-			# Check for completion
-			if task::is_complete "$task"; then
-				echo ""
-				ui::banner "🎉 Task Complete!" "$task"
-				return 0
-			fi
-		else
-			log::warn "Iteration #$iteration exited with code $exit_code"
-		fi
-
-		# Single-run mode check
-		if [ "${NANCY_EXECUTION_MODE:-loop}" == "single-run" ]; then
-			log::info "Single-run mode enabled. Exiting."
-			return 0
-		fi
-
-		# Pause check
-		_start_wait_while_paused "$task"
-
-		echo ""
-		log::info "Starting next iteration in 2s..."
-		# Archive any remaining worker messages before next iteration
-		comms::archive_all "$task" "worker"
-		comms::archive_all "$task" "orchestrator"
-		sleep 2
+			;;
+		esac
 	done
 }
