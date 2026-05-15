@@ -1,4 +1,4 @@
-query GetSubIssues($id: ID!) {
+query GetSubIssues($id: String!, $parentId: ID!) {
   issue(id: $id) {
     identifier
     title
@@ -12,7 +12,7 @@ query GetSubIssues($id: ID!) {
   }
   issues(
     filter: {
-      parent: { id: { eq: $id } }
+      parent: { id: { eq: $parentId } }
       state: { name: { nin: ["Canceled", "Done", "Duplicate"] } }
     }
     first: 250
