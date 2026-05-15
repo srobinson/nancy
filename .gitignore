@@ -12,6 +12,7 @@ __pycache__/
 *.pyc
 \.nancy/
 copilot-session-*.md
+/ISSUES.md
 node_modules/
 worktrees/
 z/test.sh
