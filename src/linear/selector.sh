@@ -34,11 +34,22 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 		];
 	def latest_direction_event:
 		(direction_events | sort_by(.at) | reverse | .[0] // null);
-	def has_unresolved_human_direction:
+	def latest_unresolved_direction_event:
 		(latest_direction_event) as $event |
-		($event != null)
-		and (($event.body // "") | test("Needs human direction"; "i"))
-		and ((($event.body // "") | test("^Human direction:"; "im")) | not);
+		if (($event != null)
+			and (($event.body // "") | test("^Outcome:[ \t]*Needs human direction"; "im"))
+			and ((($event.body // "") | test("^Human direction:"; "im")) | not))
+		then $event else null end;
+	def has_unresolved_human_direction:
+		latest_unresolved_direction_event != null;
+	def human_direction_classification:
+		(latest_unresolved_direction_event.body // "") as $body |
+		([try ($body |
+			capture("(?im)^Classification:[ \t]*(?<class>loop|decision)[ \t]*$").class |
+			ascii_downcase
+		) catch empty] | .[0] // "");
+	def has_direction_class($class):
+		has_unresolved_human_direction and human_direction_classification == $class;
 	def human_direction_blocker:
 		(latest_direction_event.body // "") as $body |
 		(
@@ -92,6 +103,40 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			corrective,
 			review
 		} end;
+	def selector_repair_target($predicates):
+		if ($predicates.too_deep | length) > 0 then
+			$predicates.too_deep[0]
+		elif ($predicates.unauthorized_gate_defects | length) > 0 then
+			($predicates.review_open[0]
+				// $predicates.accepted_gate
+				// $predicates.gate_review
+				// $predicates.unauthorized_gate_defects[0])
+		elif $predicates.review_closed_with_unreviewed_target then
+			($predicates.final_review // $predicates.review_target)
+		else null end;
+	def selector_repair_routing($predicates):
+		selector_repair_target($predicates) as $target |
+		if $target == null then null
+		elif ($predicates.too_deep | length) > 0 then
+			{
+				target_issue: $target.identifier,
+				target_mode: "planning",
+				repair_instruction: ("Flatten unsupported hierarchy under " + $target.identifier + "; Nancy supports only parent and child issues.")
+			}
+		elif ($predicates.unauthorized_gate_defects | length) > 0 then
+			($predicates.unauthorized_gate_defects | map(.identifier) | join(", ")) as $ids |
+			{
+				target_issue: $target.identifier,
+				target_mode: (if ($target.review // false) then "post_execution_review" else "planning" end),
+				repair_instruction: ("Authorize " + $ids + " in the accepted gate Execute list before continuing post execution review.")
+			}
+		elif $predicates.review_closed_with_unreviewed_target then
+			{
+				target_issue: $target.identifier,
+				target_mode: "post_execution_review",
+				repair_instruction: ("Resume post execution review for " + $predicates.review_target.identifier + " before final completion.")
+			}
+		else null end;
 
 	def selector_predicates:
 		(.data.issues.nodes // []) as $parents |
@@ -139,9 +184,12 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			select((.corrective | not) and (.review | not) and is_accepted_state) |
 			select((.identifier as $id | $reviewed_worker_ids | index($id)) | not)
 		] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $review_target |
-		($review_target != null and ([ $authorized_status[] | select(.review and is_final_accepted) ] | length) > 0) as $review_closed_with_unreviewed_target |
+		([ $authorized_status[] | select(.review and is_final_accepted) ] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $final_review |
+		($review_target != null and $final_review != null) as $review_closed_with_unreviewed_target |
 		([ $authorized_status[] | select(is_final_accepted | not) ]) as $not_final_authorized |
-		([ $authorized_status[] | select(.review and has_unresolved_human_direction) ]) as $human_direction_reviews |
+		([ $authorized_status[] | select(.review and is_open_state and has_direction_class("loop")) ]) as $agent_stuck_reviews |
+		([ $authorized_status[] | select(.review and is_open_state and has_direction_class("decision")) ]) as $product_decision_reviews |
+		($agent_stuck_reviews + $product_decision_reviews) as $human_direction_reviews |
 		(
 			($authorized_ids | length) > 0
 			and $accepted_gate != null
@@ -164,23 +212,26 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			review_closed_with_unreviewed_target: $review_closed_with_unreviewed_target,
 			review_open: $review_open,
 			review_target: $review_target,
+			final_review: $final_review,
 			execution_open: $execution_open,
 			final_ready: $final_ready,
 			authorized_ids: $authorized_ids,
 			unauthorized: $unauthorized,
+			agent_stuck_reviews: $agent_stuck_reviews,
+			product_decision_reviews: $product_decision_reviews,
 			gate_review: $gate_review,
 			accepted_gate: $accepted_gate,
 			authorized_parent: $authorized_parent
 		};
 
 	def selector_mode($predicates):
-		if ($predicates.too_deep | length) > 0 then "needs_human_direction"
+		if ($predicates.too_deep | length) > 0 then "workflow_repair"
 		elif ($predicates.open_planning | length) > 0 then "planning"
 		elif $predicates.open_gate_review != null then "planning"
-		elif ($predicates.unauthorized_gate_defects | length) > 0 then "needs_human_direction"
+		elif ($predicates.unauthorized_gate_defects | length) > 0 then "workflow_repair"
 		elif ($predicates.corrective_open | length) > 0 then "corrective_resolution"
 		elif ($predicates.human_direction_reviews | length) > 0 then "needs_human_direction"
-		elif $predicates.review_closed_with_unreviewed_target then "needs_human_direction"
+		elif $predicates.review_closed_with_unreviewed_target then "workflow_repair"
 		elif (($predicates.review_open | length) > 0
 			and ($predicates.review_target != null or ($predicates.execution_open | length) == 0))
 		then "post_execution_review"
@@ -202,6 +253,8 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			$predicates.corrective_open
 		elif $mode == "post_execution_review" then
 			$predicates.review_open
+		elif $mode == "workflow_repair" then
+			[selector_repair_target($predicates)] | map(select(. != null))
 		elif $mode == "needs_human_direction" then
 			[]
 		else
@@ -225,15 +278,19 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			selected_mode: $mode,
 			selected_issue: ($candidates.selected | selected_shape),
 			eligibility_reason:
-				(if $mode == "needs_human_direction" then
+				(if $mode == "workflow_repair" then
 					(if ($predicates.too_deep | length) > 0 then
-						"Hierarchy deeper than children and grandchildren requires human direction"
+						"Workflow repair required: hierarchy exceeds supported depth"
 					elif ($predicates.unauthorized_gate_defects | length) > 0 then
-						"Open Backlog issue exists outside accepted gate Execute list"
-					elif $predicates.review_closed_with_unreviewed_target then
-						"Post execution review issue closed before every worker issue was reviewed"
+						"Workflow repair required: open Backlog issue outside accepted gate Execute list"
 					else
-						"Post execution review recorded Needs human direction"
+						"Workflow repair required: post execution review closed before every worker issue was reviewed"
+					end)
+				elif $mode == "needs_human_direction" then
+					(if ($predicates.agent_stuck_reviews | length) > 0 then
+						"Agent is stuck in a self diagnosed loop"
+					else
+						"Product or scope decision needed from human"
 					end)
 				elif $mode == "final_completion" then
 					"All authorized gate work is terminal"
@@ -266,7 +323,7 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 				parent_identifier,
 				blockers: [.blockers[] | select(.released | not) | .identifier]
 			}],
-			unauthorized_backlog_candidates: [ $predicates.unauthorized[] | {
+			unauthorized_backlog_candidates: [ $predicates.unauthorized_gate_defects[] | {
 				identifier,
 				title,
 				state: state_name,
@@ -290,6 +347,10 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 					}
 				] | .[0] // null
 			),
+			workflow_repair_route: ($mode == "workflow_repair"),
+			agent_stuck: (($predicates.agent_stuck_reviews | length) > 0),
+			product_decision_needed: (($predicates.product_decision_reviews | length) > 0),
+			repair_routing: (if $mode == "workflow_repair" then selector_repair_routing($predicates) else null end),
 			review_target: (
 				if $mode != "post_execution_review" or $predicates.review_target == null then null else {
 					identifier: $predicates.review_target.identifier,
@@ -297,8 +358,7 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 					state: ($predicates.review_target.state.name // "")
 				} end
 			),
-			hierarchy_depth_supported: 2,
-			requires_human_direction: ((($predicates.too_deep | length) > 0) or (($predicates.unauthorized_gate_defects | length) > 0) or (($predicates.human_direction_reviews | length) > 0) or $predicates.review_closed_with_unreviewed_target)
+			hierarchy_depth_supported: 2
 		};
 
 	selector_predicates as $predicates |
