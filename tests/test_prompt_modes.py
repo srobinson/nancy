@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -43,6 +44,50 @@ def _mode_instructions(mode):
     return result.stdout
 
 
+def _worker_prompt(
+    mode,
+    selector_context,
+    project_title="Project Title",
+    project_description="Description",
+    agent="codex",
+):
+    script = r'''
+        export NANCY_FRAMEWORK_ROOT="$PWD"
+        export NANCY_PROJECT_ROOT="$(mktemp -d)"
+        export NANCY_CURRENT_TASK_DIR="$NANCY_PROJECT_ROOT/.nancy/tasks/ALP-1"
+        source src/prompt/index.sh
+        source src/cmd/start.sh
+        mkdir -p "$NANCY_CURRENT_TASK_DIR"
+
+        _NEXT_PROMPT_MODE="$TEST_PROMPT_MODE"
+        _NEXT_SELECTOR_PROMPT_CONTEXT="$TEST_SELECTOR_CONTEXT"
+
+        _start_render_worker_prompt \
+            ALP-1 session-1 ALP-1 \
+            "$TEST_PROJECT_TITLE" "$TEST_PROJECT_DESCRIPTION" \
+            /tmp/worktree "" "$TEST_AGENT"
+    '''
+
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "TEST_PROMPT_MODE": mode,
+            "TEST_SELECTOR_CONTEXT": selector_context,
+            "TEST_PROJECT_TITLE": project_title,
+            "TEST_PROJECT_DESCRIPTION": project_description,
+            "TEST_AGENT": agent,
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    return result.stdout
+
+
 def test_required_prompt_mode_templates_exist():
     for mode in REQUIRED_MODES:
         assert (PROMPT_MODE_DIR / f"{mode}.md.template").exists()
@@ -72,6 +117,39 @@ def test_post_execution_review_requires_one_target_and_no_aggregate_review():
     assert "Do not perform aggregate execution set review" in instructions
 
 
+def test_post_execution_review_repair_instruction_renders_gate_authority_branch():
+    selector_context = """## Selected Work
+
+- Mode: `workflow_repair`
+- Issue: `ALP-2418` Post execution review
+- Eligibility: Workflow repair route
+- Repair instruction: Extend accepted gate `ALP-2411` Execute line to include `ALP-2419`.
+"""
+
+    prompt = _worker_prompt("post_execution_review", selector_context)
+
+    assert "- Repair instruction: Extend accepted gate `ALP-2411`" in prompt
+    assert "repair only gate authority" in prompt
+    assert "extend its `Execute:` line" in prompt
+    assert "one-line Linear comment on the gate" in prompt
+    assert "post-execution-review-workflow.md#outcome-classification" in prompt
+    assert (
+        "Do not perform a worker review or reconciliation when a Repair instruction is present"
+        in prompt
+    )
+    assert "{{MODE_INSTRUCTIONS_SECTION}}" not in prompt
+
+
+def test_post_execution_review_template_stays_under_loc_limit():
+    lines = (
+        (PROMPT_MODE_DIR / "post_execution_review.md.template")
+        .read_text()
+        .splitlines()
+    )
+
+    assert len(lines) < 50
+
+
 def test_execution_prompt_completes_issue_not_task():
     instructions = _mode_instructions("execution")
 
@@ -87,40 +165,19 @@ def test_corrective_resolution_does_not_repeat_complete_sentinel_warning():
 
 
 def test_worker_prompt_preserves_ampersands_in_mode_instructions():
-    script = r'''
-        export NANCY_FRAMEWORK_ROOT="$PWD"
-        export NANCY_PROJECT_ROOT="$(mktemp -d)"
-        export NANCY_CURRENT_TASK_DIR="$NANCY_PROJECT_ROOT/.nancy/tasks/ALP-1"
-        source src/prompt/index.sh
-        source src/cmd/start.sh
-        mkdir -p "$NANCY_CURRENT_TASK_DIR"
-
-        _NEXT_PROMPT_MODE=execution
-        _NEXT_SELECTOR_PROMPT_CONTEXT='## Selected Work
+    selector_context = """## Selected Work
 
 - Mode: `execution`
 - Issue: `ALP-2` Test issue
 - Eligibility: test
-'
+"""
 
-        prompt=$(_start_render_worker_prompt ALP-1 session-1 ALP-1 "Project & Title" "Description & context" /tmp/worktree "" codex)
-
-        if [[ "$prompt" != *"just check && just build && just test"* ]]; then
-            echo "prompt did not preserve just command ampersands"
-            exit 1
-        fi
-        if [[ "$prompt" == *"{{MODE_INSTRUCTIONS_SECTION}}"* ]]; then
-            echo "prompt leaked mode placeholder"
-            exit 1
-        fi
-    '''
-
-    result = subprocess.run(
-        ["bash", "-c", script],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
+    prompt = _worker_prompt(
+        "execution",
+        selector_context,
+        project_title="Project & Title",
+        project_description="Description & context",
     )
 
-    assert result.returncode == 0, result.stderr + result.stdout
+    assert "just check && just build && just test" in prompt
+    assert "{{MODE_INSTRUCTIONS_SECTION}}" not in prompt
