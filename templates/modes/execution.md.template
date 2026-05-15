@@ -12,8 +12,8 @@ You are implementing the selected Linear issue.
 Work on one issue at a time, using the selected issue above.
 
 0. Select the issue named in Selected Work. Do not infer authority from the first unchecked `ISSUES.md` row.
-1. Use `linear-server.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
-2. Use `linear-server.save_issue(id: ISSUE_ID, state: "In Progress")`.
+1. Use ` mcp__linear__.get_issue(id: ISSUE_ID)` to read the issue. If it is a sub issue, also fetch the parent for context.
+2. Use ` mcp__linear__.save_issue(id: ISSUE_ID, state: "In Progress")`.
 3. Implement, test, and commit.
 4. Complete the issue.
 
@@ -26,7 +26,7 @@ Important:
 
 All steps are required:
 
-1. Update Linear first: `linear-server.update_issue(id: ISSUE_ID, state: "Worker Done")`.
+1. Update Linear first: ` mcp__linear__.update_issue(id: ISSUE_ID, state: "Worker Done")`.
 2. Mark the checkbox `[X]` in `{{NANCY_CURRENT_TASK_DIR}}/ISSUES.md`.
 3. Commit with a handover message: `nancy[ISSUE_ID]: <detailed_description>`.
 4. Call the session handover skill. Claude agents print `/session-handover`. Codex agents print `$session-handover`.

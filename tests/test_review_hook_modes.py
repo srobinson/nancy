@@ -552,6 +552,66 @@ def test_sidecar_detects_claude_prefixed_end_turn():
     _run_review_mode_script(script)
 
 
+def test_sidecar_uses_handover_timeout_instead_of_worker_done_breakpoint():
+    script = r'''
+        source src/sidecar/sidecar.sh
+
+        export NANCY_TASK_DIR
+        NANCY_TASK_DIR=$(mktemp -d)
+        task=ALP-test
+        mkdir -p "$NANCY_TASK_DIR/$task"
+        echo "$$" > "$NANCY_TASK_DIR/$task/.worker_pid"
+
+        time_file=$(mktemp)
+        printf '100\n' > "$time_file"
+        date() {
+            if [[ "${1:-}" == "+%s" ]]; then
+                current_time=$(cat "$time_file")
+                current_time=$((current_time + 1))
+                printf '%s\n' "$current_time" > "$time_file"
+                printf '%s\n' "$current_time"
+                return 0
+            fi
+            command date "$@"
+        }
+
+        sleep() { :; }
+        log::debug() { :; }
+        log::info() { :; }
+        log::warn() { :; }
+        sidecar::_pane_exists() { return 0; }
+        sidecar::_worker_alive() { return 0; }
+        sidecar::_extract_context_percent() { printf '70\n'; }
+        sidecar::_request_handover() { :; }
+        sidecar::_handover_changed() { return 1; }
+        sidecar::_capture_worker() {
+            printf 'Successfully loaded skill: session-handover\n'
+            printf 'Called linear.save_issue({"state":"Worker Done"})\n'
+        }
+        sidecar::_kill_worker() {
+            printf '%s\n' "$3"
+            return 0
+        }
+
+        output=$(
+            NANCY_SIDECAR_POLL_SECONDS=0 \
+            NANCY_SIDECAR_HANDOVER_TIMEOUT_SECONDS=1 \
+            sidecar::_monitor_loop "$task" "%1" "$PWD" worker
+        )
+
+        if [[ "$output" == "breakpoint issue-transition" ]]; then
+            echo "handover activity allowed Worker Done breakpoint"
+            exit 1
+        fi
+        if [[ "$output" != "handover timeout" ]]; then
+            echo "expected handover timeout, got: $output"
+            exit 1
+        fi
+    '''
+
+    _run_review_mode_script(script)
+
+
 def test_turn_exit_instruction_survives_skill_confirmation_steps():
     script = r'''
         source src/cmd/start.sh

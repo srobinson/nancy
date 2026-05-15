@@ -377,13 +377,6 @@ sidecar::_monitor_loop() {
 					handover_written=1
 					log::info "Handover file updated; waiting for completion signal"
 				fi
-				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit" "$mode"; then
-					local break_kind="$SIDECAR_BREAK_KIND"
-					last_commit="$SIDECAR_LAST_COMMIT"
-					log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
-					sidecar::_kill_worker "$task" "$worker_pane" "breakpoint ${break_kind}"
-					return 0
-				fi
 				if sidecar::_detect_exit_ready "$pane_text"; then
 					if ((handover_written == 1)); then
 						log::info "Worker emitted completion signal after handover at ${percent}%; rotating worker"
@@ -414,6 +407,13 @@ sidecar::_monitor_loop() {
 					fi
 					sleep "$poll_seconds"
 					continue
+				fi
+				if sidecar::_detect_break_point "$worker_pane" "$worktree_dir" "$last_commit" "$mode"; then
+					local break_kind="$SIDECAR_BREAK_KIND"
+					last_commit="$SIDECAR_LAST_COMMIT"
+					log::info "Breakpoint (${break_kind}) at ${percent}%; terminating worker"
+					sidecar::_kill_worker "$task" "$worker_pane" "breakpoint ${break_kind}"
+					return 0
 				fi
 				if ((handover_elapsed < handover_grace_seconds)); then
 					if ((percent >= kill_threshold && logged_handover_grace == 0)); then
