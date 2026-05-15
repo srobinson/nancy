@@ -124,8 +124,8 @@ EOF
 			)
 		) | @tsv'
 
+	echo '```text' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
 	{
-		echo '```text'
 		echo -e " \tISSUE_ID\tTitle\tPriority\tState"
 		echo "$sub_issues" | jq -r "$row_jq"
 	} | column -t -s $'\t' >>"${NANCY_CURRENT_TASK_DIR}/ISSUES.md"
