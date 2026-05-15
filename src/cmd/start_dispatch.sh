@@ -180,7 +180,7 @@ _start_run_iteration() {
 
 	local agent_role="${_NEXT_AGENT_ROLE:-}"
 	local prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
-	local selection="${_NEXT_SELECTION:-{}}"
+	local selection="${_NEXT_SELECTION:-"{}"}"
 	local selection_has_issue="${_NEXT_SELECTION_HAS_ISSUE:-false}"
 
 	if [[ "$prompt_mode" == "final_completion" ]]; then
