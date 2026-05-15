@@ -1,108 +1,7 @@
-import json
-import subprocess
-from pathlib import Path
+from tests.linear_selector_helpers import _accepted_gate, _issue, _markers, _select, _select_with_status, _tree
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _labels(*names):
-    return {"nodes": [{"name": name, "parent": {"name": "Agent Role" if name.endswith("-engineer") else "Type"}} for name in names]}
-
-
-def _issue(identifier, title, state="Todo", sort=0, description="", children=None, blockers=None, labels=None, comments=None):
-    return {
-        "identifier": identifier,
-        "title": title,
-        "description": description,
-        "priorityLabel": "High",
-        "subIssueSortOrder": sort,
-        "state": {"name": state},
-        "labels": _labels(*(labels or [])),
-        "comments": {
-            "nodes": [
-                {
-                    "body": comment["body"],
-                    "createdAt": comment.get("createdAt", f"2026-01-01T00:00:0{idx}Z"),
-                    "updatedAt": comment.get("updatedAt", f"2026-01-01T00:00:0{idx}Z"),
-                }
-                for idx, comment in enumerate(comments or [])
-            ]
-        },
-        "relations": {"nodes": []},
-        "inverseRelations": {
-            "nodes": [
-                {
-                    "type": "blocks",
-                    "issue": {
-                        "identifier": blocker["identifier"],
-                        "title": blocker.get("title", blocker["identifier"]),
-                        "state": {"name": blocker["state"]},
-                    },
-                }
-                for blocker in blockers or []
-            ]
-        },
-        "children": {"nodes": children or []},
-    }
-
-
-def _tree(*issues):
-    return {"data": {"issues": {"nodes": list(issues)}}}
-
-
-def _select(issue_tree):
-    return _select_with_status(issue_tree, issue_tree)
-
-
-def _select_with_status(issue_tree, status_tree):
-    script = (
-        "source src/linear/selector.sh; "
-        "linear::selector:evaluate \"$1\" \"$2\""
-    )
-    result = subprocess.run(
-        ["bash", "-c", script, "selector", json.dumps(issue_tree), json.dumps(status_tree)],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
-
-
-def _markers(issue_tree, selection):
-    script = (
-        "source src/linear/selector.sh; "
-        "jq -r --argjson selector \"$2\" \"$(linear::selector:row_marker_jq) "
-        ".data.issues.nodes[] | (.children.nodes[]? // .) | [.identifier, (. | marker(\\$selector))] | @tsv\" <<<\"$1\""
-    )
-    result = subprocess.run(
-        ["bash", "-c", script, "markers", json.dumps(issue_tree), json.dumps(selection)],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    return dict(line.split("\t", 1) for line in result.stdout.strip().splitlines())
-
-
-def _accepted_gate(execute_line):
-    return _issue(
-        "ALP-2220",
-        "Gate review and execution readiness",
-        state="Worker Done",
-        sort=1,
-        description=(
-            "Planning complete. Outcome: Ready for execution.\n"
-            "Authorized execution parent: `ALP-2226` Backlog.\n"
-            f"Execute: {execute_line}.\n"
-        ),
-    )
-
-
-def test_backlog_children_are_unauthorized_before_gate_acceptance():
+def test_backlog_children_are_not_repair_candidates_before_gate_acceptance():
     backlog_child = _issue("ALP-2225", "Implement gate mode prompt templates", sort=1)
     issue_tree = _tree(
         _issue("ALP-2217", "Plan Linear issue selection", sort=1),
@@ -114,15 +13,8 @@ def test_backlog_children_are_unauthorized_before_gate_acceptance():
 
     assert selected["selected_mode"] == "planning"
     assert selected["selected_issue"]["identifier"] == "ALP-2217"
-    assert selected["unauthorized_backlog_candidates"] == [
-        {
-            "identifier": "ALP-2225",
-            "title": "Implement gate mode prompt templates",
-            "state": "Todo",
-            "parent_identifier": "ALP-2226",
-            "gate_review_issue": "ALP-2220",
-        }
-    ]
+    assert selected["workflow_repair_route"] is False
+    assert selected["unauthorized_backlog_candidates"] == []
 
 
 def test_worker_done_blocker_releases_downstream_execution_issue():
@@ -231,7 +123,7 @@ def test_backlog_state_corrective_outranks_human_direction_review():
     assert selected["selected_issue"]["identifier"] == "ALP-3001"
 
 
-def test_open_backlog_child_outside_accepted_gate_requires_human_direction():
+def test_open_backlog_child_outside_accepted_gate_routes_workflow_repair():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`"),
         _issue(
@@ -246,14 +138,18 @@ def test_open_backlog_child_outside_accepted_gate_requires_human_direction():
 
     selected = _select(issue_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
-    assert selected["selected_issue"] is None
-    assert selected["requires_human_direction"] is True
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["selected_issue"]["identifier"] == "ALP-2220"
+    assert selected["workflow_repair_route"] is True
+    assert "requires_human_direction" not in selected
     assert "outside accepted gate" in selected["eligibility_reason"]
     assert selected["unauthorized_backlog_candidates"][0]["identifier"] == "ALP-3001"
+    assert selected["repair_routing"]["repair_instruction"] == (
+        "Authorize ALP-3001 in the accepted gate Execute list before continuing post execution review."
+    )
 
 
-def test_backlog_state_child_outside_accepted_gate_requires_human_direction():
+def test_backlog_state_child_outside_accepted_gate_routes_workflow_repair():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`"),
         _issue(
@@ -268,7 +164,8 @@ def test_backlog_state_child_outside_accepted_gate_requires_human_direction():
 
     selected = _select(issue_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["workflow_repair_route"] is True
     assert selected["unauthorized_backlog_candidates"][0]["identifier"] == "ALP-3001"
 
 
@@ -333,7 +230,7 @@ def test_canceled_or_duplicate_blocker_does_not_block_selection():
     assert selected["blocked_candidates"] == []
 
 
-def test_grandchildren_trigger_needs_human_direction():
+def test_grandchildren_route_workflow_repair():
     grandchild = _issue("ALP-4001", "Too deep", sort=1)
     issue_tree = _tree(
         _accepted_gate("`ALP-3001`"),
@@ -348,12 +245,13 @@ def test_grandchildren_trigger_needs_human_direction():
 
     selected = _select(issue_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
-    assert selected["selected_issue"] is None
-    assert selected["requires_human_direction"] is True
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["selected_issue"]["identifier"] == "ALP-3001"
+    assert selected["workflow_repair_route"] is True
+    assert selected["repair_routing"]["target_mode"] == "planning"
 
 
-def test_post_execution_review_needs_human_direction_blocks_final_completion():
+def test_post_execution_review_product_decision_blocks_final_completion():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3002`"),
         _issue(
@@ -374,11 +272,14 @@ def test_post_execution_review_needs_human_direction_blocks_final_completion():
                 _issue(
                     "ALP-3002",
                     "Post execution review",
-                    state="Done",
+                    state="Todo",
                     sort=2,
                     comments=[
                         {
-                            "body": "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.",
+                            "body": (
+                                "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.\n"
+                                "Classification: decision"
+                            ),
                             "createdAt": "2026-01-01T00:00:01Z",
                             "updatedAt": "2026-01-01T00:00:01Z",
                         }
@@ -390,15 +291,20 @@ def test_post_execution_review_needs_human_direction_blocks_final_completion():
 
     selected = _select_with_status(issue_tree, status_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_mode"] == "product_decision"
     assert selected["selected_issue"] is None
+    assert selected["agent_stuck"] is False
+    assert selected["product_decision_needed"] is True
     assert selected["human_direction"]["identifier"] == "ALP-3002"
     assert "Needs human direction" in selected["human_direction"]["blocker"]
 
 
 def test_human_direction_comment_releases_review_back_to_post_execution_review():
     old_blocker = {
-        "body": "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.",
+        "body": (
+            "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing.\n"
+            "Classification: decision"
+        ),
         "createdAt": "2026-01-01T00:00:01Z",
         "updatedAt": "2026-01-01T00:00:01Z",
     }
@@ -692,7 +598,7 @@ def test_post_execution_review_ignores_pass_comment_without_reviewed_prefix():
     assert selected["review_target"]["identifier"] == "ALP-3000"
 
 
-def test_closed_review_with_unreviewed_worker_requires_human_direction():
+def test_closed_review_with_unreviewed_worker_routes_workflow_repair():
     issue_tree = _tree(
         _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
         _issue(
@@ -731,10 +637,15 @@ def test_closed_review_with_unreviewed_worker_requires_human_direction():
 
     selected = _select_with_status(issue_tree, status_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
-    assert selected["selected_issue"] is None
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
     assert selected["review_target"] is None
-    assert selected["requires_human_direction"] is True
+    assert selected["workflow_repair_route"] is True
+    assert selected["repair_routing"] == {
+        "target_issue": "ALP-3002",
+        "target_mode": "post_execution_review",
+        "repair_instruction": "Resume post execution review for ALP-3001 before final completion.",
+    }
     assert "closed before every worker issue was reviewed" in selected["eligibility_reason"]
 
 

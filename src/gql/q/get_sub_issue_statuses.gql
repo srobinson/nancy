@@ -1,7 +1,18 @@
-query GetSubIssueStatuses($id: ID!) {
+query GetSubIssueStatuses($id: String!, $parentId: ID!) {
+  issue(id: $id) {
+    identifier
+    title
+    comments(first: 250) {
+      nodes {
+        body
+        createdAt
+        updatedAt
+      }
+    }
+  }
   issues(
     filter: {
-      parent: { id: { eq: $id } }
+      parent: { id: { eq: $parentId } }
       state: { name: { nin: ["Canceled", "Duplicate"] } }
     }
     first: 250

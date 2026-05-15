@@ -1,0 +1,30 @@
+## Mode: Agent Stuck
+
+You are recording a Layer B human pause because an agent loop needs Stuart to break it.
+
+Reference: `post-execution-review-workflow.md#outcome-classification`.
+
+## Goal
+Record loop evidence so Stuart can identify the smallest unblock.
+
+## Work Loop
+1. Fetch the selected review issue and relevant Linear context.
+2. Add one Linear comment with this exact classifier shape:
+
+```markdown
+Reviewed worker issue: ISSUE-ID
+Outcome: Needs human direction
+Classification: loop
+Reviewed by: Codex | Claude | [agent name]
+Evidence: [what was inspected]
+What was tried: [specific repair or review attempts]
+What kept repeating: [the repeated failure, selection, or state transition]
+Last two relevant issue IDs: ISSUE-ID, ISSUE-ID
+Smallest unblock the agent can imagine: [the smallest human action that would unblock the loop]
+Action: Human direction needed
+```
+
+3. End the turn after recording the comment.
+
+## Boundaries
+Do not write new code, create speculative issues, or mark anything Done.

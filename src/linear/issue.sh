@@ -18,7 +18,7 @@ linear::issue:sub() {
 	local parent_id=${1}
 
 	local variables=$(
-		gql::query::variables "id::$parent_id"
+		gql::query::variables "id::$parent_id" "parentId::$parent_id"
 	)
 	local query=$(
 		gql::query::generate "$NANCY_FRAMEWORK_ROOT/src/gql/q/get_sub_issues.gql" "$variables"
@@ -30,7 +30,7 @@ linear::issue:sub:statuses() {
 	local parent_id=${1}
 
 	local variables=$(
-		gql::query::variables "id::$parent_id"
+		gql::query::variables "id::$parent_id" "parentId::$parent_id"
 	)
 	local query=$(
 		gql::query::generate "$NANCY_FRAMEWORK_ROOT/src/gql/q/get_sub_issue_statuses.gql" "$variables"
