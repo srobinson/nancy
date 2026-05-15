@@ -145,6 +145,18 @@ _start_reviewer_followup_mode() {
 	esac
 }
 
+_start_record_workflow_repair_attempt() {
+	local task="$1"
+	local prompt_mode="$2"
+	local selection="$3"
+
+	if [[ "$prompt_mode" != "workflow_repair" ]]; then
+		return 0
+	fi
+
+	linear::selector:write_repair_attempt "$selection" "$task"
+}
+
 _start_run_iteration() {
 	local task="$1"
 	local -n _project=$2
@@ -245,6 +257,13 @@ _start_run_iteration() {
 	local old_prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
 	prompt_template_mode=$(_start_prompt_template_mode "$prompt_mode")
 	_NEXT_PROMPT_MODE="$prompt_template_mode"
+	if ! _start_record_workflow_repair_attempt "$task" "$prompt_mode" "$selection"; then
+		_NEXT_PROMPT_MODE="$old_prompt_mode"
+		log::error "Failed to record workflow repair attempt before rendering prompt."
+		_turn["action"]="return"
+		_turn["status"]=1
+		return 0
+	fi
 	if ! prompt=$(_start_render_worker_prompt "$task" "$session_id" "${_project[identifier]}" "${_project[title]}" \
 		"${_project[description]}" "${_worktree[dir]}" "$agent_role" "$active_cli"); then
 		_NEXT_PROMPT_MODE="$old_prompt_mode"

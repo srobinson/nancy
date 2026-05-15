@@ -103,7 +103,7 @@ def _markers(issue_tree, selection):
     return dict(line.split("\t", 1) for line in result.stdout.strip().splitlines())
 
 
-def _accepted_gate(execute_line):
+def _accepted_gate(execute_line, comments=None):
     return _issue(
         "ALP-2220",
         "Gate review and execution readiness",
@@ -114,4 +114,5 @@ def _accepted_gate(execute_line):
             "Authorized execution parent: `ALP-2226` Backlog.\n"
             f"Execute: {execute_line}.\n"
         ),
+        comments=comments,
     )

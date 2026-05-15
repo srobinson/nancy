@@ -3,6 +3,10 @@
 # Gate aware Linear selection and ledger evidence
 # ------------------------------------------------------------------------------
 
+_LINEAR_SELECTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$_LINEAR_SELECTOR_DIR/repair_attempts.sh"
+unset _LINEAR_SELECTOR_DIR
+
 # shellcheck disable=SC2016
 readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 	def issue_ids: [scan("[A-Z]+-[0-9]+")];
@@ -139,7 +143,7 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 				repair_instruction: ("Resume post execution review for " + $predicates.review_target.identifier + " before final completion.")
 			}
 		else null end;
-
+'"$_LINEAR_SELECTOR_REPAIR_ATTEMPTS_JQ"'
 	def selector_predicates:
 		(.data.issues.nodes // []) as $parents |
 		($status.data.issues.nodes // []) as $status_parents |
@@ -223,18 +227,19 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			product_decision_reviews: $product_decision_reviews,
 			gate_review: $gate_review,
 			accepted_gate: $accepted_gate,
-			authorized_parent: $authorized_parent
+			authorized_parent: $authorized_parent,
+			repair_comment_events: repair_comment_events(([ $status.data.issue? // empty ] + $status_all))
 		};
 
 		def selector_mode($predicates):
-			if ($predicates.too_deep | length) > 0 then "workflow_repair"
+			if ($predicates.too_deep | length) > 0 then selector_repair_mode($predicates)
 			elif ($predicates.open_planning | length) > 0 then "planning"
 			elif $predicates.open_gate_review != null then "planning"
-			elif ($predicates.unauthorized_gate_defects | length) > 0 then "workflow_repair"
+			elif ($predicates.unauthorized_gate_defects | length) > 0 then selector_repair_mode($predicates)
 			elif ($predicates.corrective_open | length) > 0 then "corrective_resolution"
 			elif ($predicates.agent_stuck_reviews | length) > 0 then "agent_stuck"
 			elif ($predicates.product_decision_reviews | length) > 0 then "product_decision"
-			elif $predicates.review_closed_with_unreviewed_target then "workflow_repair"
+			elif $predicates.review_closed_with_unreviewed_target then selector_repair_mode($predicates)
 			elif (($predicates.review_open | length) > 0
 				and ($predicates.review_target != null or ($predicates.execution_open | length) == 0))
 			then "post_execution_review"
@@ -277,6 +282,7 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 		};
 
 	def selector_output($predicates; $mode; $candidates):
+		(selector_repair_attempt_escalation($predicates)) as $repair_escalation |
 		{
 			selected_mode: $mode,
 			selected_issue: ($candidates.selected | selected_shape),
@@ -290,7 +296,11 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 							"Workflow repair required: post execution review closed before every worker issue was reviewed"
 						end)
 					elif $mode == "agent_stuck" then
-						"Agent is stuck in a self diagnosed loop"
+						(if $repair_escalation != null then
+							"Workflow repair loop: repeated repair attempts did not resolve durable state"
+						else
+							"Agent is stuck in a self diagnosed loop"
+						end)
 					elif $mode == "product_decision" then
 						"Product or scope decision needed from human"
 					elif $mode == "final_completion" then
@@ -339,7 +349,16 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			authorized_parent: $predicates.authorized_parent,
 			authorized_issue_ids: $predicates.authorized_ids,
 				human_direction: (
-					[ $predicates.human_direction_reviews[] |
+					if $repair_escalation != null and $mode == "agent_stuck" then
+						{
+							identifier: $repair_escalation.identifier,
+							title: $repair_escalation.title,
+							state: $repair_escalation.state,
+							blocker: $repair_escalation.blocker,
+							classification: $repair_escalation.classification,
+							classifier_body: $repair_escalation.classifier_body
+						}
+					else [ $predicates.human_direction_reviews[] |
 						{
 							identifier,
 							title,
@@ -348,10 +367,10 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 							classification: human_direction_classification,
 							classifier_body: human_direction_classifier_body
 						}
-					] | .[0] // null
+					] | .[0] // null end
 				),
 			workflow_repair_route: ($mode == "workflow_repair"),
-			agent_stuck: (($predicates.agent_stuck_reviews | length) > 0),
+			agent_stuck: ($mode == "agent_stuck"),
 			product_decision_needed: (($predicates.product_decision_reviews | length) > 0),
 			repair_routing: (if $mode == "workflow_repair" then selector_repair_routing($predicates) else null end),
 			review_target: (

@@ -1,4 +1,15 @@
 query GetSubIssueStatuses($id: ID!) {
+  issue(id: $id) {
+    identifier
+    title
+    comments(first: 250) {
+      nodes {
+        body
+        createdAt
+        updatedAt
+      }
+    }
+  }
   issues(
     filter: {
       parent: { id: { eq: $id } }

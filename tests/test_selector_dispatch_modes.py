@@ -97,3 +97,38 @@ def test_workflow_repair_null_selection_is_not_a_pause_case():
     '''
 
     _run_dispatch_script(script)
+
+
+def test_workflow_repair_dispatch_records_attempt_once():
+    script = r'''
+        source src/cmd/start.sh
+        source src/linear/selector.sh
+
+        export NANCY_CURRENT_TASK_DIR=$(mktemp -d)
+        export NANCY_SESSION_ID="nancy-ALP-2420-dispatch-test"
+        calls="$NANCY_CURRENT_TASK_DIR/calls"
+
+        linear::issue:comment:add() {
+            printf '%s\t%s\n' "$1" "$2" >>"$calls"
+        }
+
+        selection='{"workflow_repair_route":true,"selected_issue":{"identifier":"ALP-2418","review":true},"repair_routing":{"target_issue":"ALP-2418","repair_instruction":"Authorize ALP-2419 in the accepted gate Execute list before continuing post execution review."}}'
+
+        _start_record_workflow_repair_attempt ALP-2420 workflow_repair "$selection"
+        _start_record_workflow_repair_attempt ALP-2420 workflow_repair "$selection"
+        _start_record_workflow_repair_attempt ALP-2420 execution "$selection"
+        output=$(cat "$calls")
+
+        if [[ "$(grep -c repair_attempts <<<"$output")" -ne 1 ]]; then
+            echo "expected exactly one repair attempt comment"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+        if [[ "$output" != ALP-2418$'\t'* ]]; then
+            echo "repair attempt should be written to review issue"
+            printf '%s\n' "$output"
+            exit 1
+        fi
+    '''
+
+    _run_dispatch_script(script)
