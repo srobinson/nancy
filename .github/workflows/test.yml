@@ -23,8 +23,13 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y jq uuid-runtime
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install jq
+            brew install jq bash
+            echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           fi
+        shell: bash
+
+      - name: Verify bash version
+        run: bash --version
         shell: bash
 
       - name: Set up Python
