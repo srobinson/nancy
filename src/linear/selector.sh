@@ -3,99 +3,97 @@
 # Gate aware Linear selection and ledger evidence
 # ------------------------------------------------------------------------------
 
-linear::selector:evaluate() {
-	local issue_tree="$1"
-	local status_tree="${2:-$issue_tree}"
-
-	jq '
-		def issue_ids: [scan("[A-Z]+-[0-9]+")];
-		def state_name: .state.name;
-		def is_selectable: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
-		def is_open_state: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
-		def is_accepted_state: state_name as $s | ["Worker Done", "Done"] | index($s);
-		def role:
-			([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // "");
-		def is_backlog:
-			.title == "Backlog";
-		def is_gate_review:
-			.title | test("Gate review|execution readiness"; "i");
-		def has_label($name):
-			any(.labels.nodes[]?; (.name | ascii_downcase) == ($name | ascii_downcase));
-		def is_corrective:
-			has_label("Corrective") or (.title | test("corrective"; "i"));
-		def is_review:
-			has_label("Post Execution Review")
-			or (.title | test("^post[ -]execution review"; "i"))
-			or ((.description // "") | test("(^|\n)[ \t]*Post execution review"; "i"));
-		def direction_events:
-			[.comments.nodes[]? |
-				{
-					at: (.updatedAt // .createdAt // ""),
-					body: (.body // "")
-				} |
-				select(.body | test("Needs human direction|Human direction:"; "i"))
-			];
-		def latest_direction_event:
-			(direction_events | sort_by(.at) | reverse | .[0] // null);
-		def has_unresolved_human_direction:
-			(latest_direction_event) as $event |
-			($event != null)
-			and (($event.body // "") | test("Needs human direction"; "i"))
-			and ((($event.body // "") | test("^Human direction:"; "im")) | not);
-		def human_direction_blocker:
-			(latest_direction_event.body // "") as $body |
+# shellcheck disable=SC2016
+readonly _LINEAR_SELECTOR_EVALUATE_JQ='
+	def issue_ids: [scan("[A-Z]+-[0-9]+")];
+	def state_name: .state.name;
+	def is_selectable: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
+	def is_open_state: state_name as $s | ["Backlog", "Todo", "In Progress"] | index($s);
+	def is_accepted_state: state_name as $s | ["Worker Done", "Done"] | index($s);
+	def role:
+		([.labels.nodes[]? | select(.parent.name == "Agent Role") | .name] | .[0] // "");
+	def is_backlog:
+		.title == "Backlog";
+	def is_gate_review:
+		.title | test("Gate review|execution readiness"; "i");
+	def has_label($name):
+		any(.labels.nodes[]?; (.name | ascii_downcase) == ($name | ascii_downcase));
+	def is_corrective:
+		has_label("Corrective") or (.title | test("corrective"; "i"));
+	def is_review:
+		has_label("Post Execution Review")
+		or (.title | test("^post[ -]execution review"; "i"))
+		or ((.description // "") | test("(^|\n)[ \t]*Post execution review"; "i"));
+	def direction_events:
+		[.comments.nodes[]? |
+			{
+				at: (.updatedAt // .createdAt // ""),
+				body: (.body // "")
+			} |
+			select(.body | test("Needs human direction|Human direction:"; "i"))
+		];
+	def latest_direction_event:
+		(direction_events | sort_by(.at) | reverse | .[0] // null);
+	def has_unresolved_human_direction:
+		(latest_direction_event) as $event |
+		($event != null)
+		and (($event.body // "") | test("Needs human direction"; "i"))
+		and ((($event.body // "") | test("^Human direction:"; "im")) | not);
+	def human_direction_blocker:
+		(latest_direction_event.body // "") as $body |
+		(
+			[
+				($body | split("\n")[] | select(test("^Exact unresolved question:"; "i"))),
+				($body | split("\n")[] | select(test("Needs human direction"; "i"))),
+				($body | split("\n")[] | select(length > 0))
+			] | .[0] // "Needs human direction"
+		);
+	def review_outcome_ids:
+		[.comments.nodes[]?.body as $body |
 			(
-				[
-					($body | split("\n")[] | select(test("^Exact unresolved question:"; "i"))),
-					($body | split("\n")[] | select(test("Needs human direction"; "i"))),
-					($body | split("\n")[] | select(length > 0))
-				] | .[0] // "Needs human direction"
-			);
-		def review_outcome_ids:
-			[.comments.nodes[]?.body as $body |
-				(
-					[try ($body | capture("(?m)^Reviewed worker issue: (?<id>[A-Z]+-[0-9]+)").id) catch empty]
-				)[]
-			];
-		def is_final_accepted:
-			if is_review then state_name == "Done"
-			elif is_corrective then is_accepted_state
-			else is_accepted_state
-			end;
-		def released($mode):
-			if (. == "Canceled" or . == "Duplicate") then true
-			else (. == "Worker Done" or . == "Done")
-			end;
-		def blockers($mode):
-			[.inverseRelations.nodes[]? | select(.type == "blocks") |
-				{
-					identifier: .issue.identifier,
-					title: .issue.title,
-					state: .issue.state.name,
-					released: (.issue.state.name | released($mode))
-				}
-			];
-		def enriched($parent; $depth):
-			. + {
-				depth: $depth,
-				parent_identifier: ($parent.identifier // ""),
-				parent_title: ($parent.title // ""),
-				agent_role: role,
-				corrective: is_corrective,
-				review: is_review
-			};
-		def selected_shape:
-			if . == null then null else {
-				identifier,
-				title,
-				state: state_name,
-				parent_identifier,
-				parent_title,
-				agent_role,
-				corrective,
-				review
-			} end;
+				[try ($body | capture("(?m)^Reviewed worker issue: (?<id>[A-Z]+-[0-9]+)").id) catch empty]
+			)[]
+		];
+	def is_final_accepted:
+		if is_review then state_name == "Done"
+		elif is_corrective then is_accepted_state
+		else is_accepted_state
+		end;
+	def released($mode):
+		if (. == "Canceled" or . == "Duplicate") then true
+		else (. == "Worker Done" or . == "Done")
+		end;
+	def blockers($mode):
+		[.inverseRelations.nodes[]? | select(.type == "blocks") |
+			{
+				identifier: .issue.identifier,
+				title: .issue.title,
+				state: .issue.state.name,
+				released: (.issue.state.name | released($mode))
+			}
+		];
+	def enriched($parent; $depth):
+		. + {
+			depth: $depth,
+			parent_identifier: ($parent.identifier // ""),
+			parent_title: ($parent.title // ""),
+			agent_role: role,
+			corrective: is_corrective,
+			review: is_review
+		};
+	def selected_shape:
+		if . == null then null else {
+			identifier,
+			title,
+			state: state_name,
+			parent_identifier,
+			parent_title,
+			agent_role,
+			corrective,
+			review
+		} end;
 
+	def selector_predicates:
 		(.data.issues.nodes // []) as $parents |
 		($status.data.issues.nodes // []) as $status_parents |
 		([ $status_parents[] | enriched({}; 1) ]) as $status_direct |
@@ -155,64 +153,96 @@ linear::selector:evaluate() {
 		([ $authorized[] | select(is_selectable and .corrective) ]) as $corrective_open |
 		([ $authorized[] | select(.review and (is_selectable or state_name == "Worker Done")) ]) as $review_open |
 		([ $authorized[] | select(is_selectable and (.corrective | not) and (.review | not)) ]) as $execution_open |
-		(if ($too_deep | length) > 0 then "needs_human_direction"
-		elif ($open_planning | length) > 0 then "planning"
-		elif $open_gate_review != null then "planning"
-		elif ($unauthorized_gate_defects | length) > 0 then "needs_human_direction"
-		elif ($corrective_open | length) > 0 then "corrective_resolution"
-		elif ($human_direction_reviews | length) > 0 then "needs_human_direction"
-		elif $review_closed_with_unreviewed_target then "needs_human_direction"
-		elif (($review_open | length) > 0
-			and ($review_target != null or ($execution_open | length) == 0))
+		{
+			direct: $direct,
+			too_deep: $too_deep,
+			open_planning: $open_planning,
+			open_gate_review: $open_gate_review,
+			unauthorized_gate_defects: $unauthorized_gate_defects,
+			corrective_open: $corrective_open,
+			human_direction_reviews: $human_direction_reviews,
+			review_closed_with_unreviewed_target: $review_closed_with_unreviewed_target,
+			review_open: $review_open,
+			review_target: $review_target,
+			execution_open: $execution_open,
+			final_ready: $final_ready,
+			authorized_ids: $authorized_ids,
+			unauthorized: $unauthorized,
+			gate_review: $gate_review,
+			accepted_gate: $accepted_gate,
+			authorized_parent: $authorized_parent
+		};
+
+	def selector_mode($predicates):
+		if ($predicates.too_deep | length) > 0 then "needs_human_direction"
+		elif ($predicates.open_planning | length) > 0 then "planning"
+		elif $predicates.open_gate_review != null then "planning"
+		elif ($predicates.unauthorized_gate_defects | length) > 0 then "needs_human_direction"
+		elif ($predicates.corrective_open | length) > 0 then "corrective_resolution"
+		elif ($predicates.human_direction_reviews | length) > 0 then "needs_human_direction"
+		elif $predicates.review_closed_with_unreviewed_target then "needs_human_direction"
+		elif (($predicates.review_open | length) > 0
+			and ($predicates.review_target != null or ($predicates.execution_open | length) == 0))
 		then "post_execution_review"
-		elif $final_ready then "final_completion"
-		elif ($authorized_ids | length) > 0 then "execution"
+		elif $predicates.final_ready then "final_completion"
+		elif ($predicates.authorized_ids | length) > 0 then "execution"
 		else "planning"
-		end) as $mode |
-		(if $mode == "planning" then
-			if ($open_planning | length) > 0 then
-				[ $direct[] | .identifier as $id | select(any($open_planning[]; .identifier == $id)) ]
-			elif $open_gate_review != null then
-				[ $direct[] | select(.identifier == $open_gate_review.identifier) ]
+		end;
+
+	def selector_pool($predicates; $mode):
+		if $mode == "planning" then
+			if ($predicates.open_planning | length) > 0 then
+				[ $predicates.direct[] | .identifier as $id | select(any($predicates.open_planning[]; .identifier == $id)) ]
+			elif $predicates.open_gate_review != null then
+				[ $predicates.direct[] | select(.identifier == $predicates.open_gate_review.identifier) ]
 			else
-				[ $direct[] | select(is_selectable and (.title != "Backlog")) ]
+				[ $predicates.direct[] | select(is_selectable and (.title != "Backlog")) ]
 			end
 		elif $mode == "corrective_resolution" then
-			$corrective_open
+			$predicates.corrective_open
 		elif $mode == "post_execution_review" then
-			$review_open
+			$predicates.review_open
 		elif $mode == "needs_human_direction" then
 			[]
 		else
-			$execution_open
-		end) as $pool |
+			$predicates.execution_open
+		end;
+
+	def selector_candidates($predicates; $mode):
+		(selector_pool($predicates; $mode)) as $pool |
 		([ $pool[] | . + {blockers: blockers($mode)} ]) as $classified |
 		([ $classified[] | select((.review | not) and any(.blockers[]?; .released | not)) ]) as $blocked |
 		([ $classified[] |
 			select(.review or (any(.blockers[]?; .released | not) | not))
 		] | sort_by(.subIssueSortOrder // 0) | .[0] // null) as $selected |
 		{
+			blocked: $blocked,
+			selected: $selected
+		};
+
+	def selector_output($predicates; $mode; $candidates):
+		{
 			selected_mode: $mode,
-			selected_issue: ($selected | selected_shape),
+			selected_issue: ($candidates.selected | selected_shape),
 			eligibility_reason:
 				(if $mode == "needs_human_direction" then
-					(if ($too_deep | length) > 0 then
+					(if ($predicates.too_deep | length) > 0 then
 						"Hierarchy deeper than children and grandchildren requires human direction"
-					elif ($unauthorized_gate_defects | length) > 0 then
+					elif ($predicates.unauthorized_gate_defects | length) > 0 then
 						"Open Backlog issue exists outside accepted gate Execute list"
-					elif $review_closed_with_unreviewed_target then
+					elif $predicates.review_closed_with_unreviewed_target then
 						"Post execution review issue closed before every worker issue was reviewed"
 					else
 						"Post execution review recorded Needs human direction"
 					end)
 				elif $mode == "final_completion" then
 					"All authorized gate work is terminal"
-				elif $selected == null then
+				elif $candidates.selected == null then
 					"No eligible issue after gate, status, and blocker checks"
 				elif $mode == "corrective_resolution" then
 					"Corrective issue outranks review until accepted or recorded independent"
 				elif $mode == "post_execution_review" then
-					(if $review_target != null then
+					(if $predicates.review_target != null then
 						"Worker issue completed and awaiting review; corrective queue is clear"
 					else
 						"Execution and corrective queues are clear; reconcile open review issue state"
@@ -229,29 +259,29 @@ linear::selector:evaluate() {
 				final_acceptance_states:
 					(if $mode == "post_execution_review" then ["Done"] else ["Worker Done", "Done"] end)
 			},
-			blocked_candidates: [ $blocked[] | {
+			blocked_candidates: [ $candidates.blocked[] | {
 				identifier,
 				title,
 				state: state_name,
 				parent_identifier,
 				blockers: [.blockers[] | select(.released | not) | .identifier]
 			}],
-			unauthorized_backlog_candidates: [ $unauthorized[] | {
+			unauthorized_backlog_candidates: [ $predicates.unauthorized[] | {
 				identifier,
 				title,
 				state: state_name,
 				parent_identifier,
-				gate_review_issue: (($gate_review.identifier // $accepted_gate.identifier) // "")
+				gate_review_issue: (($predicates.gate_review.identifier // $predicates.accepted_gate.identifier) // "")
 			}],
 			corrective_priority_evidence: {
-				open_corrective: [ $corrective_open[] | {identifier, title, state: state_name} ],
-				open_review: [ $review_open[] | {identifier, title, state: state_name} ],
-				corrective_outranks_review: (($corrective_open | length) > 0 and ($review_open | length) > 0)
+				open_corrective: [ $predicates.corrective_open[] | {identifier, title, state: state_name} ],
+				open_review: [ $predicates.review_open[] | {identifier, title, state: state_name} ],
+				corrective_outranks_review: (($predicates.corrective_open | length) > 0 and ($predicates.review_open | length) > 0)
 			},
-			authorized_parent: $authorized_parent,
-			authorized_issue_ids: $authorized_ids,
+			authorized_parent: $predicates.authorized_parent,
+			authorized_issue_ids: $predicates.authorized_ids,
 			human_direction: (
-				[ $human_direction_reviews[] |
+				[ $predicates.human_direction_reviews[] |
 					{
 						identifier,
 						title,
@@ -261,16 +291,27 @@ linear::selector:evaluate() {
 				] | .[0] // null
 			),
 			review_target: (
-				if $mode != "post_execution_review" or $review_target == null then null else {
-					identifier: $review_target.identifier,
-					title: $review_target.title,
-					state: ($review_target.state.name // "")
+				if $mode != "post_execution_review" or $predicates.review_target == null then null else {
+					identifier: $predicates.review_target.identifier,
+					title: $predicates.review_target.title,
+					state: ($predicates.review_target.state.name // "")
 				} end
 			),
 			hierarchy_depth_supported: 2,
-			requires_human_direction: ((($too_deep | length) > 0) or (($unauthorized_gate_defects | length) > 0) or (($human_direction_reviews | length) > 0) or $review_closed_with_unreviewed_target)
-		}
-	' --argjson status "$status_tree" <<<"$issue_tree"
+			requires_human_direction: ((($predicates.too_deep | length) > 0) or (($predicates.unauthorized_gate_defects | length) > 0) or (($predicates.human_direction_reviews | length) > 0) or $predicates.review_closed_with_unreviewed_target)
+		};
+
+	selector_predicates as $predicates |
+	selector_mode($predicates) as $mode |
+	selector_candidates($predicates; $mode) as $candidates |
+	selector_output($predicates; $mode; $candidates)
+'
+
+linear::selector:evaluate() {
+	local issue_tree="$1"
+	local status_tree="${2:-$issue_tree}"
+
+	jq "$_LINEAR_SELECTOR_EVALUATE_JQ" --argjson status "$status_tree" <<<"$issue_tree"
 }
 
 linear::selector:_canonicalize_render_input() {
