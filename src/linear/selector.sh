@@ -50,15 +50,17 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 		) catch empty] | .[0] // "");
 	def has_direction_class($class):
 		has_unresolved_human_direction and human_direction_classification == $class;
-	def human_direction_blocker:
-		(latest_direction_event.body // "") as $body |
-		(
-			[
-				($body | split("\n")[] | select(test("^Exact unresolved question:"; "i"))),
-				($body | split("\n")[] | select(test("Needs human direction"; "i"))),
-				($body | split("\n")[] | select(length > 0))
-			] | .[0] // "Needs human direction"
-		);
+		def human_direction_blocker:
+			(latest_direction_event.body // "") as $body |
+			(
+				[
+					($body | split("\n")[] | select(test("^Exact unresolved question:"; "i"))),
+					($body | split("\n")[] | select(test("Needs human direction"; "i"))),
+					($body | split("\n")[] | select(length > 0))
+				] | .[0] // "Needs human direction"
+			);
+		def human_direction_classifier_body:
+			latest_unresolved_direction_event.body // "";
 	def review_outcome_ids:
 		[.comments.nodes[]?.body as $body |
 			(
@@ -224,21 +226,22 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			authorized_parent: $authorized_parent
 		};
 
-	def selector_mode($predicates):
-		if ($predicates.too_deep | length) > 0 then "workflow_repair"
-		elif ($predicates.open_planning | length) > 0 then "planning"
-		elif $predicates.open_gate_review != null then "planning"
-		elif ($predicates.unauthorized_gate_defects | length) > 0 then "workflow_repair"
-		elif ($predicates.corrective_open | length) > 0 then "corrective_resolution"
-		elif ($predicates.human_direction_reviews | length) > 0 then "needs_human_direction"
-		elif $predicates.review_closed_with_unreviewed_target then "workflow_repair"
-		elif (($predicates.review_open | length) > 0
-			and ($predicates.review_target != null or ($predicates.execution_open | length) == 0))
-		then "post_execution_review"
-		elif $predicates.final_ready then "final_completion"
-		elif ($predicates.authorized_ids | length) > 0 then "execution"
-		else "planning"
-		end;
+		def selector_mode($predicates):
+			if ($predicates.too_deep | length) > 0 then "workflow_repair"
+			elif ($predicates.open_planning | length) > 0 then "planning"
+			elif $predicates.open_gate_review != null then "planning"
+			elif ($predicates.unauthorized_gate_defects | length) > 0 then "workflow_repair"
+			elif ($predicates.corrective_open | length) > 0 then "corrective_resolution"
+			elif ($predicates.agent_stuck_reviews | length) > 0 then "agent_stuck"
+			elif ($predicates.product_decision_reviews | length) > 0 then "product_decision"
+			elif $predicates.review_closed_with_unreviewed_target then "workflow_repair"
+			elif (($predicates.review_open | length) > 0
+				and ($predicates.review_target != null or ($predicates.execution_open | length) == 0))
+			then "post_execution_review"
+			elif $predicates.final_ready then "final_completion"
+			elif ($predicates.authorized_ids | length) > 0 then "execution"
+			else "planning"
+			end;
 
 	def selector_pool($predicates; $mode):
 		if $mode == "planning" then
@@ -249,17 +252,17 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			else
 				[ $predicates.direct[] | select(is_selectable and (.title != "Backlog")) ]
 			end
-		elif $mode == "corrective_resolution" then
-			$predicates.corrective_open
-		elif $mode == "post_execution_review" then
-			$predicates.review_open
-		elif $mode == "workflow_repair" then
-			[selector_repair_target($predicates)] | map(select(. != null))
-		elif $mode == "needs_human_direction" then
-			[]
-		else
-			$predicates.execution_open
-		end;
+			elif $mode == "corrective_resolution" then
+				$predicates.corrective_open
+			elif $mode == "post_execution_review" then
+				$predicates.review_open
+			elif $mode == "workflow_repair" then
+				[selector_repair_target($predicates)] | map(select(. != null))
+			elif $mode == "agent_stuck" or $mode == "product_decision" then
+				[]
+			else
+				$predicates.execution_open
+			end;
 
 	def selector_candidates($predicates; $mode):
 		(selector_pool($predicates; $mode)) as $pool |
@@ -281,21 +284,19 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 				(if $mode == "workflow_repair" then
 					(if ($predicates.too_deep | length) > 0 then
 						"Workflow repair required: hierarchy exceeds supported depth"
-					elif ($predicates.unauthorized_gate_defects | length) > 0 then
-						"Workflow repair required: open Backlog issue outside accepted gate Execute list"
-					else
-						"Workflow repair required: post execution review closed before every worker issue was reviewed"
-					end)
-				elif $mode == "needs_human_direction" then
-					(if ($predicates.agent_stuck_reviews | length) > 0 then
+						elif ($predicates.unauthorized_gate_defects | length) > 0 then
+							"Workflow repair required: open Backlog issue outside accepted gate Execute list"
+						else
+							"Workflow repair required: post execution review closed before every worker issue was reviewed"
+						end)
+					elif $mode == "agent_stuck" then
 						"Agent is stuck in a self diagnosed loop"
-					else
+					elif $mode == "product_decision" then
 						"Product or scope decision needed from human"
-					end)
-				elif $mode == "final_completion" then
-					"All authorized gate work is terminal"
-				elif $candidates.selected == null then
-					"No eligible issue after gate, status, and blocker checks"
+					elif $mode == "final_completion" then
+						"All authorized gate work is terminal"
+					elif $candidates.selected == null then
+						"No eligible issue after gate, status, and blocker checks"
 				elif $mode == "corrective_resolution" then
 					"Corrective issue outranks review until accepted or recorded independent"
 				elif $mode == "post_execution_review" then
@@ -337,16 +338,18 @@ readonly _LINEAR_SELECTOR_EVALUATE_JQ='
 			},
 			authorized_parent: $predicates.authorized_parent,
 			authorized_issue_ids: $predicates.authorized_ids,
-			human_direction: (
-				[ $predicates.human_direction_reviews[] |
-					{
-						identifier,
-						title,
-						state: state_name,
-						blocker: human_direction_blocker
-					}
-				] | .[0] // null
-			),
+				human_direction: (
+					[ $predicates.human_direction_reviews[] |
+						{
+							identifier,
+							title,
+							state: state_name,
+							blocker: human_direction_blocker,
+							classification: human_direction_classification,
+							classifier_body: human_direction_classifier_body
+						}
+					] | .[0] // null
+				),
 			workflow_repair_route: ($mode == "workflow_repair"),
 			agent_stuck: (($predicates.agent_stuck_reviews | length) > 0),
 			product_decision_needed: (($predicates.product_decision_reviews | length) > 0),
@@ -408,8 +411,38 @@ EOF
 	' <<<"$selection"
 }
 
-linear::selector:render_blocker() {
+linear::selector:render_repair_route() {
 	local selection="$1"
+
+	if ! selection=$(linear::selector:_canonicalize_render_input "$selection"); then
+		cat <<'EOF'
+INFO: Selector JSON invalid
+
+Nancy could not render the selector repair route because the selector JSON was malformed.
+EOF
+		return 0
+	fi
+
+	jq -r '
+		if (.workflow_repair_route and .repair_routing) then
+			"INFO: Workflow repair route",
+			"",
+			"Target issue: `" + .repair_routing.target_issue + "`" + (
+				if .selected_issue and .selected_issue.identifier == .repair_routing.target_issue then
+					" " + .selected_issue.title
+				else
+					""
+				end
+			),
+			"Target mode: `" + .repair_routing.target_mode + "`",
+			"Repair instruction: " + .repair_routing.repair_instruction
+		else empty end
+	' <<<"$selection"
+}
+
+linear::selector:_render_human_direction_blocker() {
+	local selection="$1"
+	local blocker_kind="$2"
 
 	if ! selection=$(linear::selector:_canonicalize_render_input "$selection"); then
 		cat <<'EOF'
@@ -420,18 +453,55 @@ EOF
 		return 0
 	fi
 
-	jq -r '
-		"BLOCKER: Needs human direction",
-		"",
-		(if .human_direction then
-			"Issue: `" + .human_direction.identifier + "` " + .human_direction.title,
-			"State: `" + .human_direction.state + "`",
+	jq -r --arg blocker_kind "$blocker_kind" '
+		def body:
+			.human_direction.classifier_body
+			// .human_direction.blocker
+			// .eligibility_reason
+			// "";
+		def first_line($patterns):
+			[body | split("\n")[] as $line |
+				$line |
+				select(any($patterns[]; . as $pattern | ($line | test($pattern; "i"))))
+			] | .[0] // "";
+		def field_value($patterns; $fallback):
+			(first_line($patterns)) as $line |
+			if $line == "" then $fallback else ($line | sub("^[^:]+:[ \t]*"; "")) end;
+		def issue_lines:
+			if .human_direction then
+				"Issue: `" + .human_direction.identifier + "` " + .human_direction.title,
+				"State: `" + .human_direction.state + "`"
+			else
+				"Issue: unknown"
+			end;
+
+		if $blocker_kind == "loop" then
+			"BLOCKER: Agent stuck",
 			"",
-			(.human_direction.blocker // "Needs human direction")
+			issue_lines,
+			"",
+			"What was tried: " + field_value(["^What was tried:", "^Tried:"]; "Not recorded"),
+			"Loop evidence: " + field_value(["^Loop evidence:", "^Evidence:"]; (.human_direction.blocker // .eligibility_reason // "Not recorded")),
+			"Smallest unblock imagined: " + field_value(["^Smallest unblock", "^Smallest agent unblock", "^Smallest Stuart unblock"]; "Not recorded")
 		else
-			(.eligibility_reason // "Needs human direction")
-		end)
+			"BLOCKER: Product decision needed",
+			"",
+			issue_lines,
+			"",
+			"Question: " + field_value(["^Exact unresolved question:", "^Unresolved question:", "^Question:"]; (.human_direction.blocker // .eligibility_reason // "Not recorded")),
+			"Positions: " + field_value(["^Positions:", "^Position:"]; "Not recorded"),
+			"Smallest decision: " + field_value(["^Smallest decision:", "^Smallest Stuart decision:"]; "Not recorded"),
+			"Safe work while waiting: " + field_value(["^Safe work while waiting:", "^Safe work:"]; "Not recorded")
+		end
 	' <<<"$selection"
+}
+
+linear::selector:render_loop_blocker() {
+	linear::selector:_render_human_direction_blocker "$1" "loop"
+}
+
+linear::selector:render_decision_blocker() {
+	linear::selector:_render_human_direction_blocker "$1" "decision"
 }
 
 linear::selector:render_prompt_context() {
@@ -455,11 +525,14 @@ EOF
 			"## Selected Work\n\n" +
 			"- Mode: `" + .selected_mode + "`\n" +
 			"- Issue: `" + .selected_issue.identifier + "` " + .selected_issue.title + "\n" +
-			(if .review_target then
-				"- Review target: `" + .review_target.identifier + "` " + .review_target.title + "\n"
-			else "" end) +
-			"- Eligibility: " + .eligibility_reason + "\n\n" +
-			"Use this selected issue. Do not choose work from the first unchecked ISSUES.md row."
+				(if .review_target then
+					"- Review target: `" + .review_target.identifier + "` " + .review_target.title + "\n"
+				else "" end) +
+				(if .selected_mode == "workflow_repair" and .repair_routing and .repair_routing.repair_instruction then
+					"- Repair instruction: " + .repair_routing.repair_instruction + "\n"
+				else "" end) +
+				"- Eligibility: " + .eligibility_reason + "\n\n" +
+				"Use this selected issue. Do not choose work from the first unchecked ISSUES.md row."
 		else
 			"## Selected Work\n\n" +
 			"- Mode: `" + .selected_mode + "`\n" +

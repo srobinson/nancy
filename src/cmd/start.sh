@@ -543,13 +543,15 @@ _start_reviewer_agent() {
 	fi
 
 	local old_prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
+	local prompt_template_mode
 	local reviewer_session_id="${session_id}-reviewer"
 	local timestamp
 	timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 	local reviewer_session_file="${NANCY_CURRENT_TASK_DIR}/sessions/session_${timestamp}_iter${iteration}-reviewer.md"
 	local prompt
 
-	_NEXT_PROMPT_MODE="$prompt_mode"
+	prompt_template_mode=$(_start_prompt_template_mode "$prompt_mode")
+	_NEXT_PROMPT_MODE="$prompt_template_mode"
 	prompt=$(_start_render_worker_prompt "$task" "$reviewer_session_id" "$project_identifier" "$project_title" \
 		"$project_description" "$worktree_dir" "" "$reviewer_cli")
 	local render_status=$?

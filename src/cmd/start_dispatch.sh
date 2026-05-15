@@ -30,6 +30,17 @@ _start_selection_has_no_issue() {
 	[[ "$has_no_issue" == "true" ]]
 }
 
+_start_write_pause_file() {
+	local task="$1"
+	local reason="$2"
+
+	mkdir -p "${NANCY_TASK_DIR}/${task}"
+	cat >"${NANCY_TASK_DIR}/${task}/PAUSE" <<EOF
+Paused at $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+Reason: ${reason}
+EOF
+}
+
 _start_handle_null_selection() {
 	local task="$1"
 	local project_id="$2"
@@ -45,13 +56,14 @@ _start_handle_null_selection() {
 		ui::banner "🎉 Task Complete!" "$task"
 		return 0
 		;;
-	needs_human_direction)
-		linear::selector:render_blocker "$selection"
-		mkdir -p "${NANCY_TASK_DIR}/${task}"
-		cat >"${NANCY_TASK_DIR}/${task}/PAUSE" <<EOF
-Paused at $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-Reason: Needs human direction
-EOF
+	agent_stuck)
+		linear::selector:render_loop_blocker "$selection"
+		_start_write_pause_file "$task" "Agent stuck"
+		return 2
+		;;
+	product_decision)
+		linear::selector:render_decision_blocker "$selection"
+		_start_write_pause_file "$task" "Product decision needed"
 		return 2
 		;;
 	*)
@@ -64,7 +76,7 @@ EOF
 
 _start_is_gate_aware_prompt_mode() {
 	case "${1:-}" in
-	planning | agent_issue_review | execution | corrective_resolution | post_execution_review | needs_human_direction)
+	planning | agent_issue_review | execution | corrective_resolution | post_execution_review | workflow_repair | agent_stuck | product_decision)
 		return 0
 		;;
 	*)
@@ -84,11 +96,22 @@ _start_should_run_review_agent_for_mode() {
 
 _start_mode_uses_reviewer_agent() {
 	case "${1:-}" in
-	agent_issue_review | post_execution_review)
+	agent_issue_review | post_execution_review | workflow_repair)
 		return 0
 		;;
 	*)
 		return 1
+		;;
+	esac
+}
+
+_start_prompt_template_mode() {
+	case "${1:-execution}" in
+	workflow_repair)
+		echo "post_execution_review"
+		;;
+	*)
+		echo "${1:-execution}"
 		;;
 	esac
 }
@@ -110,6 +133,8 @@ _start_should_run_reviewer_after_worker() {
 }
 
 _start_reviewer_followup_mode() {
+	# Planning creates a second reviewer turn. Workflow repair is already a
+	# reviewer primary turn; agent_stuck and product_decision pause before launch.
 	case "${1:-}" in
 	planning)
 		echo "agent_issue_review"
@@ -167,6 +192,10 @@ _start_run_iteration() {
 		return 0
 	fi
 
+	if [[ "$prompt_mode" == "workflow_repair" ]]; then
+		linear::selector:render_repair_route "$selection"
+	fi
+
 	local active_agent_config_role="worker"
 	local active_cli="${_runtime["worker_cli"]}"
 	local active_sidecar_mode="worker"
@@ -212,12 +241,18 @@ _start_run_iteration() {
 	echo ""
 
 	local prompt
+	local prompt_template_mode
+	local old_prompt_mode="${_NEXT_PROMPT_MODE:-execution}"
+	prompt_template_mode=$(_start_prompt_template_mode "$prompt_mode")
+	_NEXT_PROMPT_MODE="$prompt_template_mode"
 	if ! prompt=$(_start_render_worker_prompt "$task" "$session_id" "${_project[identifier]}" "${_project[title]}" \
 		"${_project[description]}" "${_worktree[dir]}" "$agent_role" "$active_cli"); then
+		_NEXT_PROMPT_MODE="$old_prompt_mode"
 		_turn["action"]="return"
 		_turn["status"]=1
 		return 0
 	fi
+	_NEXT_PROMPT_MODE="$old_prompt_mode"
 	echo "$prompt" >"$NANCY_CURRENT_TASK_DIR/PROMPT.${task}.md"
 
 	local exit_code=0

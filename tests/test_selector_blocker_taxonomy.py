@@ -3,7 +3,28 @@ from tests.linear_selector_helpers import _accepted_gate, _issue, _select, _tree
 
 def _direction_review(classification=None):
     body = "Outcome: Needs human direction. Smallest Stuart decision: pick release smoke timing."
-    if classification:
+    if classification == "loop":
+        body = "\n".join(
+            [
+                "Outcome: Needs human direction.",
+                "Classification: loop",
+                "What was tried: Repaired the gate twice and reran the selector.",
+                "Loop evidence: The same unauthorized issue reappeared after both repairs.",
+                "Smallest unblock: Confirm whether to stop repair escalation.",
+            ]
+        )
+    elif classification == "decision":
+        body = "\n".join(
+            [
+                "Outcome: Needs human direction.",
+                "Classification: decision",
+                "Exact unresolved question: Should smoke run before or after publish?",
+                "Positions: before publish reduces release risk; after publish matches client timing.",
+                "Smallest Stuart decision: pick release smoke timing.",
+                "Safe work while waiting: Update docs that do not depend on timing.",
+            ]
+        )
+    elif classification:
         body += f"\nClassification: {classification}"
     return _issue(
         "ALP-3002",
@@ -36,24 +57,28 @@ def _review_decision_tree(review):
 def test_layer_b_loop_classification_sets_agent_stuck_only():
     selected = _select(_review_decision_tree(_direction_review("loop")))
 
-    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_mode"] == "agent_stuck"
     assert selected["selected_issue"] is None
     assert selected["workflow_repair_route"] is False
     assert selected["agent_stuck"] is True
     assert selected["product_decision_needed"] is False
     assert selected["human_direction"]["identifier"] == "ALP-3002"
+    assert selected["human_direction"]["classification"] == "loop"
+    assert "Loop evidence:" in selected["human_direction"]["classifier_body"]
     assert selected["repair_routing"] is None
 
 
 def test_layer_c_decision_classification_sets_product_decision_only():
     selected = _select(_review_decision_tree(_direction_review("decision")))
 
-    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_mode"] == "product_decision"
     assert selected["selected_issue"] is None
     assert selected["workflow_repair_route"] is False
     assert selected["agent_stuck"] is False
     assert selected["product_decision_needed"] is True
     assert selected["human_direction"]["identifier"] == "ALP-3002"
+    assert selected["human_direction"]["classification"] == "decision"
+    assert "Exact unresolved question:" in selected["human_direction"]["classifier_body"]
     assert selected["repair_routing"] is None
 
 

@@ -23,12 +23,20 @@ def test_gate_aware_modes_disable_legacy_review_hook():
         export NANCY_CODE_REVIEW_AGENT_ENABLED=true
         export NANCY_LEGACY_LOCAL_REVIEW_ENABLED=true
 
-        for mode in planning agent_issue_review execution corrective_resolution post_execution_review needs_human_direction; do
+        for mode in planning agent_issue_review execution corrective_resolution post_execution_review workflow_repair agent_stuck product_decision; do
+            if ! _start_is_gate_aware_prompt_mode "$mode"; then
+                echo "gate aware mode missing: $mode"
+                exit 1
+            fi
             if _start_should_run_review_agent_for_mode "$mode"; then
                 echo "legacy review hook unexpectedly enabled for $mode"
                 exit 1
             fi
         done
+        if _start_is_gate_aware_prompt_mode needs_human_direction; then
+            echo "retired needs_human_direction mode should not be gate aware"
+            exit 1
+        fi
     '''
 
     _run_review_mode_script(script)
@@ -56,12 +64,17 @@ def test_post_execution_review_primary_pass_uses_reviewer_agent():
     script = r'''
         source src/cmd/start.sh
 
-        if ! _start_mode_uses_reviewer_agent post_execution_review; then
-            echo "post execution review primary pass should route to reviewer agent"
+        for mode in post_execution_review workflow_repair agent_issue_review; do
+            if ! _start_mode_uses_reviewer_agent "$mode"; then
+                echo "$mode primary pass should route to reviewer agent"
+                exit 1
+            fi
+        done
+
+        if [[ "$(_start_prompt_template_mode workflow_repair)" != "post_execution_review" ]]; then
+            echo "workflow repair should reuse post execution review template"
             exit 1
         fi
-
-        _start_mode_uses_reviewer_agent agent_issue_review
     '''
 
     _run_review_mode_script(script)
@@ -351,7 +364,7 @@ def test_null_selection_without_final_completion_stops_before_agent_launch():
     _run_review_mode_script(script)
 
 
-def test_needs_human_direction_pauses_without_completion():
+def test_agent_stuck_pauses_without_completion():
     script = r'''
         source src/cmd/start.sh
         source src/task/task.sh
@@ -366,9 +379,9 @@ def test_needs_human_direction_pauses_without_completion():
             updated_state="$1:$2"
         }
 
-        selection='{"selected_mode":"needs_human_direction","selected_issue":null,"eligibility_reason":"Needs human direction","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"In Progress","blocker":"Outcome: Needs human direction. Decide smoke timing."}}'
+        selection='{"selected_mode":"agent_stuck","selected_issue":null,"eligibility_reason":"Agent is stuck in a self diagnosed loop","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"In Progress","blocker":"Outcome: Needs human direction.","classification":"loop","classifier_body":"Outcome: Needs human direction.\nClassification: loop\nWhat was tried: Repaired the gate twice.\nLoop evidence: Same issue returned.\nSmallest unblock: Confirm escalation."}}'
 
-        output=$(_start_handle_null_selection ALP-1 project-1 needs_human_direction "$selection")
+        output=$(_start_handle_null_selection ALP-1 project-1 agent_stuck "$selection")
         status=$?
 
         if [[ "$status" -ne 2 ]]; then
@@ -387,7 +400,7 @@ def test_needs_human_direction_pauses_without_completion():
             echo "PAUSE was not created"
             exit 1
         fi
-        if [[ "$output" != *"BLOCKER: Needs human direction"* || "$output" != *"Outcome: Needs human direction"* ]]; then
+        if [[ "$output" != *"BLOCKER: Agent stuck"* || "$output" != *"What was tried: Repaired the gate twice."* || "$output" != *"Loop evidence: Same issue returned."* ]]; then
             echo "blocker output missing"
             printf '%s\n' "$output"
             exit 1
@@ -397,7 +410,7 @@ def test_needs_human_direction_pauses_without_completion():
     _run_review_mode_script(script)
 
 
-def test_needs_human_direction_malformed_selector_does_not_leak_jq_parse_error():
+def test_agent_stuck_malformed_selector_does_not_leak_jq_parse_error():
     script = r'''
         source src/cmd/start.sh
         source src/task/task.sh
@@ -407,10 +420,10 @@ def test_needs_human_direction_malformed_selector_does_not_leak_jq_parse_error()
         export NANCY_TASK_DIR
         mkdir -p "$NANCY_TASK_DIR/ALP-1"
 
-        selection='{"selected_mode":"needs_human_direction","selected_issue":null,"eligibility_reason":"Needs human direction","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"Worker Done","blocker":"Outcome: Needs human direction."}}
+        selection='{"selected_mode":"agent_stuck","selected_issue":null,"eligibility_reason":"Agent is stuck","human_direction":{"identifier":"ALP-2","title":"Post execution review","state":"Worker Done","blocker":"Outcome: Needs human direction."}}
 }'
 
-        output=$(_start_handle_null_selection ALP-1 project-1 needs_human_direction "$selection" 2>&1)
+        output=$(_start_handle_null_selection ALP-1 project-1 agent_stuck "$selection" 2>&1)
         status=$?
 
         if [[ "$status" -ne 2 ]]; then

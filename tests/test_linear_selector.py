@@ -291,7 +291,7 @@ def test_post_execution_review_product_decision_blocks_final_completion():
 
     selected = _select_with_status(issue_tree, status_tree)
 
-    assert selected["selected_mode"] == "needs_human_direction"
+    assert selected["selected_mode"] == "product_decision"
     assert selected["selected_issue"] is None
     assert selected["agent_stuck"] is False
     assert selected["product_decision_needed"] is True
