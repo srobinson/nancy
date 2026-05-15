@@ -106,12 +106,17 @@ _start_mode_uses_reviewer_agent() {
 }
 
 _start_prompt_template_mode() {
-	case "${1:-execution}" in
+	local mode="${1:-execution}"
+
+	case "$mode" in
 	workflow_repair)
 		echo "post_execution_review"
 		;;
+	agent_stuck | product_decision)
+		echo "$mode"
+		;;
 	*)
-		echo "${1:-execution}"
+		echo "$mode"
 		;;
 	esac
 }

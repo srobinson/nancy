@@ -15,7 +15,8 @@ NON_EXECUTION_MODES = [
     "planning",
     "agent_issue_review",
     "post_execution_review",
-    "needs_human_direction",
+    "agent_stuck",
+    "product_decision",
 ]
 REQUIRED_MODES = [
     "planning",
@@ -23,7 +24,8 @@ REQUIRED_MODES = [
     "execution",
     "corrective_resolution",
     "post_execution_review",
-    "needs_human_direction",
+    "agent_stuck",
+    "product_decision",
 ]
 REPAIR_RESOLUTION_SHAPE = (
     '{"repair_attempts_resolved":{"target_issue":"ISSUE-ID",'
@@ -104,6 +106,67 @@ def test_non_execution_prompt_modes_exclude_execution_only_instructions():
 
         for forbidden in FORBIDDEN_EXECUTION_TEXT:
             assert forbidden not in instructions
+
+
+def test_agent_stuck_template_records_loop_classifier_fields():
+    instructions = _mode_instructions("agent_stuck")
+
+    for expected in [
+        "recording a Layer B human pause",
+        "post-execution-review-workflow.md#outcome-classification",
+        "Classification: loop",
+        "What was tried:",
+        "What kept repeating:",
+        "Last two relevant issue IDs:",
+        "Smallest unblock the agent can imagine:",
+        "Do not write new code, create speculative issues, or mark anything Done.",
+    ]:
+        assert expected in instructions
+
+    assert len((PROMPT_MODE_DIR / "agent_stuck.md.template").read_text().splitlines()) < 35
+
+
+def test_product_decision_template_records_decision_classifier_fields():
+    instructions = _mode_instructions("product_decision")
+
+    for expected in [
+        "recording a Layer C human pause",
+        "post-execution-review-workflow.md#outcome-classification",
+        "Classification: decision",
+        "Question:",
+        "Agent position:",
+        "Alternative positions:",
+        "Smallest decision needed:",
+        "Safe work while waiting:",
+        "Do not write new code, create speculative issues, or mark anything Done.",
+    ]:
+        assert expected in instructions
+
+    assert (
+        len((PROMPT_MODE_DIR / "product_decision.md.template").read_text().splitlines())
+        < 35
+    )
+
+
+def test_human_pause_prompt_modes_use_split_templates():
+    selector_context_tail = """- Issue: `ALP-2` Post execution review
+- Eligibility: fixture selector output
+"""
+
+    agent_prompt = _worker_prompt(
+        "agent_stuck",
+        "## Selected Work\n\n- Mode: `agent_stuck`\n" + selector_context_tail,
+    )
+    decision_prompt = _worker_prompt(
+        "product_decision",
+        "## Selected Work\n\n- Mode: `product_decision`\n" + selector_context_tail,
+    )
+
+    assert "## Mode: Agent Stuck" in agent_prompt
+    assert "Classification: loop" in agent_prompt
+    assert "## Mode: Product Decision" in decision_prompt
+    assert "Classification: decision" in decision_prompt
+    assert "Mode: Needs Human Direction" not in agent_prompt + decision_prompt
 
 
 def test_corrective_resolution_requires_post_execution_finding_context():

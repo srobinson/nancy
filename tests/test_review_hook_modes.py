@@ -75,6 +75,12 @@ def test_post_execution_review_primary_pass_uses_reviewer_agent():
             echo "workflow repair should reuse post execution review template"
             exit 1
         fi
+        for mode in agent_stuck product_decision; do
+            if [[ "$(_start_prompt_template_mode "$mode")" != "$mode" ]]; then
+                echo "$mode should use its matching split template"
+                exit 1
+            fi
+        done
     '''
 
     _run_review_mode_script(script)

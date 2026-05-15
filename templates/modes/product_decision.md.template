@@ -1,0 +1,31 @@
+## Mode: Product Decision
+
+You are recording a Layer C human pause because work needs a product or scope decision.
+
+Reference: `post-execution-review-workflow.md#outcome-classification`.
+
+## Goal
+Record the smallest decision Stuart must make before work can continue.
+
+## Work Loop
+1. Fetch the selected review issue and relevant Linear context.
+2. Add one Linear comment with this exact classifier shape:
+
+```markdown
+Reviewed worker issue: ISSUE-ID
+Outcome: Needs human direction
+Classification: decision
+Reviewed by: Codex | Claude | [agent name]
+Evidence: [what was inspected]
+Question: [the exact unresolved question]
+Agent position: [the agent's recommended answer]
+Alternative positions: [other plausible answers and consequences]
+Smallest decision needed: [the smallest Stuart decision that unblocks work]
+Safe work while waiting: [work that remains safe, or none]
+Action: Human direction needed
+```
+
+3. End the turn after recording the comment.
+
+## Boundaries
+Do not write new code, create speculative issues, or mark anything Done.
