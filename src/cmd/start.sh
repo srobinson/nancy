@@ -622,8 +622,8 @@ cmd::start() {
 			continue
 			;;
 		epilogue)
-			_start_iteration_epilogue "$task" project worktree runtime turn "$iteration"
-			local epilogue_status=$?
+			local epilogue_status=0
+			_start_iteration_epilogue "$task" project worktree runtime turn "$iteration" || epilogue_status=$?
 			case $epilogue_status in
 			0)
 				return 0
