@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _render(function_name, selection):
+def _render(function_name, selection, extra_env=None):
     script = f"""
         source src/linear/selector.sh
         {function_name} "$SELECTION"
@@ -15,7 +15,7 @@ def _render(function_name, selection):
     result = subprocess.run(
         ["bash", "-c", script],
         cwd=REPO_ROOT,
-        env={**os.environ, "SELECTION": json.dumps(selection)},
+        env={**os.environ, "SELECTION": json.dumps(selection), **(extra_env or {})},
         text=True,
         capture_output=True,
         check=False,
@@ -24,7 +24,7 @@ def _render(function_name, selection):
     return result.stdout
 
 
-def test_render_repair_route_names_target_mode_and_instruction():
+def test_render_repair_route_names_target_mode_and_instruction(tmp_path):
     output = _render(
         "linear::selector:render_repair_route",
         {
@@ -40,6 +40,7 @@ def test_render_repair_route_names_target_mode_and_instruction():
                 "repair_instruction": "Authorize ALP-2419 in the accepted gate Execute list.",
             },
         },
+        {"NANCY_TASK_DIR": str(tmp_path)},
     )
 
     assert "INFO: Workflow repair route" in output
@@ -47,6 +48,7 @@ def test_render_repair_route_names_target_mode_and_instruction():
     assert "Target issue: `ALP-2418` Post execution review" in output
     assert "Target mode: `post_execution_review`" in output
     assert "Repair instruction: Authorize ALP-2419" in output
+    assert not list(tmp_path.rglob("PAUSE"))
 
 
 def test_render_loop_blocker_surfaces_classifier_fields():

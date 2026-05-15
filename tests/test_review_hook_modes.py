@@ -406,6 +406,10 @@ def test_agent_stuck_pauses_without_completion():
             echo "PAUSE was not created"
             exit 1
         fi
+        if [[ "$(cat "$NANCY_TASK_DIR/ALP-1/PAUSE")" != *"Reason: Agent stuck"* ]]; then
+            echo "PAUSE reason missing"
+            exit 1
+        fi
         if [[ "$output" != *"BLOCKER: Agent stuck"* || "$output" != *"What was tried: Repaired the gate twice."* || "$output" != *"Loop evidence: Same issue returned."* ]]; then
             echo "blocker output missing"
             printf '%s\n' "$output"

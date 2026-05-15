@@ -1,4 +1,17 @@
-from tests.linear_selector_helpers import _accepted_gate, _issue, _select, _tree
+import json
+import subprocess
+from pathlib import Path
+
+from tests.linear_selector_helpers import (
+    _accepted_gate,
+    _issue,
+    _select,
+    _select_with_status,
+    _tree,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _direction_review(classification=None):
@@ -92,7 +105,119 @@ def test_unclassified_human_direction_is_not_synthesized_from_review_text():
     assert selected["human_direction"] is None
 
 
-def test_alp_2408_unauthorized_corrective_routes_to_post_execution_review_repair():
+def test_loop_and_decision_words_without_classification_do_not_pause():
+    review = _issue(
+        "ALP-3002",
+        "Post execution review",
+        sort=2,
+        comments=[
+            {
+                "body": "\n".join(
+                    [
+                        "Outcome: Needs human direction.",
+                        "What was tried: repaired the gate twice.",
+                        "Loop evidence: the same issue returned.",
+                        "Exact unresolved question: Should smoke run before publish?",
+                        "Smallest Stuart decision: pick release smoke timing.",
+                    ]
+                ),
+                "createdAt": "2026-01-01T00:00:01Z",
+                "updatedAt": "2026-01-01T00:00:01Z",
+            }
+        ],
+    )
+
+    selected = _select(_review_decision_tree(review))
+
+    assert selected["selected_mode"] == "post_execution_review"
+    assert selected["agent_stuck"] is False
+    assert selected["product_decision_needed"] is False
+    assert selected["human_direction"] is None
+
+
+def test_layer_a_too_deep_routes_to_planning_repair():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue(
+                    "ALP-3000",
+                    "Worker with unsupported nesting",
+                    sort=1,
+                    children=[_issue("ALP-3001", "Unsupported grandchild")],
+                )
+            ],
+        ),
+    )
+
+    selected = _select(issue_tree)
+
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["selected_issue"]["identifier"] == "ALP-3000"
+    assert selected["workflow_repair_route"] is True
+    assert selected["agent_stuck"] is False
+    assert selected["product_decision_needed"] is False
+    assert selected["repair_routing"] == {
+        "target_issue": "ALP-3000",
+        "target_mode": "planning",
+        "repair_instruction": "Flatten unsupported hierarchy under ALP-3000; Nancy supports only parent and child issues.",
+    }
+
+
+def test_layer_a_closed_review_with_unreviewed_target_routes_to_review_repair():
+    issue_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+            ],
+        ),
+    )
+    status_tree = _tree(
+        _accepted_gate("`ALP-3000`, `ALP-3001`, `ALP-3002`"),
+        _issue(
+            "ALP-2226",
+            "Backlog",
+            children=[
+                _issue("ALP-3000", "First worker", state="Worker Done", sort=1),
+                _issue("ALP-3001", "Second worker", state="Worker Done", sort=2),
+                _issue(
+                    "ALP-3002",
+                    "Post execution review",
+                    state="Done",
+                    sort=3,
+                    comments=[
+                        {
+                            "body": "Reviewed worker issue: ALP-3000\nOutcome: Review passed",
+                            "createdAt": "2026-01-01T00:00:01Z",
+                            "updatedAt": "2026-01-01T00:00:01Z",
+                        }
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    selected = _select_with_status(issue_tree, status_tree)
+
+    assert selected["selected_mode"] == "workflow_repair"
+    assert selected["selected_issue"]["identifier"] == "ALP-3002"
+    assert selected["workflow_repair_route"] is True
+    assert selected["agent_stuck"] is False
+    assert selected["product_decision_needed"] is False
+    assert selected["repair_routing"] == {
+        "target_issue": "ALP-3002",
+        "target_mode": "post_execution_review",
+        "repair_instruction": "Resume post execution review for ALP-3001 before final completion.",
+    }
+
+
+def _alp_2408_issue_tree():
     gate = _issue(
         "ALP-2411",
         "Gate review: harness driver boundary execution readiness",
@@ -141,7 +266,11 @@ def test_alp_2408_unauthorized_corrective_routes_to_post_execution_review_repair
         ),
     )
 
-    selected = _select(issue_tree)
+    return issue_tree
+
+
+def test_alp_2408_unauthorized_corrective_routes_to_post_execution_review_repair():
+    selected = _select(_alp_2408_issue_tree())
 
     assert selected["selected_mode"] == "workflow_repair"
     assert selected["selected_issue"]["identifier"] == "ALP-2418"
@@ -154,3 +283,17 @@ def test_alp_2408_unauthorized_corrective_routes_to_post_execution_review_repair
         "target_mode": "post_execution_review",
         "repair_instruction": "Authorize ALP-2419 in the accepted gate Execute list before continuing post execution review.",
     }
+
+
+def test_alp_2408_repair_selection_matches_start_json_contract():
+    selected = _select(_alp_2408_issue_tree())
+    script = "source src/cmd/start_dispatch.sh; _start_validate_selector_output \"$1\""
+    result = subprocess.run(
+        ["bash", "-c", script, "selector-contract", json.dumps(selected)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
